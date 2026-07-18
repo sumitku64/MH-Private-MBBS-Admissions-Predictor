@@ -1,0 +1,257 @@
+//@version=6
+// =============================================================================
+//  Order Blocks + Supply & Demand + Dashboard
+//  Pine Script v6
+//  - Every confirmed swing high  -> Bearish OB  (Supply)
+//  - Every confirmed swing low   -> Bullish OB  (Demand)
+//  - Zones persist (greyed when mitigated), never silently disappear
+//  - Optional displacement filter for "explosive" OBs only
+//  - Dashboard ladder: Type | Level | Dist % from price
+// =============================================================================
+indicator("OB + Supply/Demand [v6]", shorttitle="OB-SD v6", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+// ============================ INPUTS =========================================
+grpDet  = "Detection"
+swingLen      = input.int(5,    "Swing Lookback",        minval=1, maxval=50, group=grpDet, tooltip="Bars on each side used to confirm a swing pivot (structure point). Lower = more zones.")
+useDisp       = input.bool(false,"Only Explosive OBs",   group=grpDet, tooltip="ON = only keep OBs created by an impulsive/displacement candle. OFF = every swing makes an OB.")
+dispLookback  = input.int(10,   "Displacement Lookback", minval=2, maxval=100, group=grpDet)
+dispMult      = input.float(1.5,"Displacement Strength",  minval=0.5, step=0.1, group=grpDet)
+useBodyOB     = input.bool(false,"Use Candle Body for OB", group=grpDet, tooltip="ON = body (open/close). OFF = full wick high/low.")
+
+grpZone = "Zones"
+maxZones      = input.int(5,    "Max Zones Per Side",    minval=1, maxval=50, group=grpZone, tooltip="How many active Supply/Demand zones to keep on screen per side.")
+minDistPct    = input.float(0.3,"Min Distance between OBs %", minval=0, step=0.05, group=grpZone, tooltip="Skip a new OB if it is within this %% of an existing same-side OB. Stops zones stacking. 0 = off.")
+extendBars    = input.int(20,   "Extend Zones (bars)",   minval=0, maxval=500, group=grpZone)
+mitigation    = input.string("Wick", "Mitigation By", options=["Wick","Close"], group=grpZone)
+removeMit     = input.bool(true, "Remove Mitigated Zones", group=grpZone, tooltip="ON = delete a zone once price breaks it (clean). OFF = keep & grey them (ladder like reference).")
+
+grpStyle = "Style"
+bullCol       = input.color(color.new(color.teal,   82), "Demand / Bullish OB", group=grpStyle)
+bearCol       = input.color(color.new(color.red,    82), "Supply / Bearish OB", group=grpStyle)
+bullBorder    = input.color(color.teal, "Demand Border", group=grpStyle)
+bearBorder    = input.color(color.red,  "Supply Border", group=grpStyle)
+mitCol        = input.color(color.new(color.gray, 88), "Mitigated Fill", group=grpStyle)
+showLine      = input.bool(true,  "Show Level Line", group=grpStyle)
+showLabels    = input.bool(false, "Show Zone Labels", group=grpStyle)
+
+grpDash = "Dashboard"
+showDash      = input.bool(true,  "Show Dashboard", group=grpDash)
+dashPos       = input.string("Top Right", "Position", options=["Top Right","Top Left","Bottom Right","Bottom Left"], group=grpDash)
+dashSize      = input.string("Normal", "Text Size", options=["Tiny","Small","Normal","Large"], group=grpDash)
+dashRows      = input.int(15, "Max Dashboard Rows", minval=2, maxval=40, group=grpDash)
+
+// ============================ HELPERS ========================================
+f_tsize(s) =>
+    switch s
+        "Tiny"   => size.tiny
+        "Small"  => size.small
+        "Normal" => size.normal
+        => size.large
+
+f_pos(p) =>
+    switch p
+        "Top Right"    => position.top_right
+        "Top Left"     => position.top_left
+        "Bottom Right" => position.bottom_right
+        => position.bottom_left
+
+// ============================ DISPLACEMENT (optional) ========================
+rng       = high - low
+avgRange  = ta.sma(rng, dispLookback)
+isImpulse = rng > avgRange * dispMult
+
+// ============================ STRUCTURE ======================================
+// Confirmed pivots. Pine reports them swingLen bars after they actually formed.
+ph = ta.pivothigh(high, swingLen, swingLen)
+pl = ta.pivotlow(low,  swingLen, swingLen)
+
+// ============================ ZONE STORAGE ===================================
+var box[]   bullBox  = array.new<box>()
+var line[]  bullLine = array.new<line>()
+var float[] bullTop  = array.new<float>()
+var float[] bullBot  = array.new<float>()
+var bool[]  bullMit  = array.new<bool>()
+
+var box[]   bearBox  = array.new<box>()
+var line[]  bearLine = array.new<line>()
+var float[] bearTop  = array.new<float>()
+var float[] bearBot  = array.new<float>()
+var bool[]  bearMit  = array.new<bool>()
+
+f_makeZone(bool isBull, float top, float bot, int leftBar) =>
+    bg = isBull ? bullCol : bearCol
+    bc = isBull ? bullBorder : bearBorder
+    bx = box.new(leftBar, top, bar_index + extendBars, bot, border_color=bc, bgcolor=bg, extend=extend.none)
+    line ln = na
+    if showLine
+        lvl = isBull ? bot : top
+        ln := line.new(leftBar, lvl, bar_index + extendBars, lvl, color=bc, width=1, style=line.style_solid)
+    if showLabels
+        label.new(leftBar, isBull ? bot : top, isBull ? "Bull OB" : "Bear OB",
+             style=isBull ? label.style_label_up : label.style_label_down,
+             color=color.new(bc, 60), textcolor=color.white, size=size.tiny,
+             yloc=yloc.price)
+    if isBull
+        array.push(bullBox, bx)
+        array.push(bullLine, ln)
+        array.push(bullTop, top)
+        array.push(bullBot, bot)
+        array.push(bullMit, false)
+        if array.size(bullBox) > maxZones
+            box.delete(array.shift(bullBox))
+            l = array.shift(bullLine)
+            if not na(l)
+                line.delete(l)
+            array.shift(bullTop)
+            array.shift(bullBot)
+            array.shift(bullMit)
+    else
+        array.push(bearBox, bx)
+        array.push(bearLine, ln)
+        array.push(bearTop, top)
+        array.push(bearBot, bot)
+        array.push(bearMit, false)
+        if array.size(bearBox) > maxZones
+            box.delete(array.shift(bearBox))
+            l = array.shift(bearLine)
+            if not na(l)
+                line.delete(l)
+            array.shift(bearTop)
+            array.shift(bearBot)
+            array.shift(bearMit)
+
+// Reject a new zone if its mid is within minDistPct% of an existing same-side zone
+f_tooClose(float[] tops, float[] bots, float newMid) =>
+    res = false
+    if minDistPct > 0 and array.size(tops) > 0
+        for i = 0 to array.size(tops) - 1
+            mid = (array.get(tops, i) + array.get(bots, i)) / 2
+            if math.abs(newMid - mid) / newMid * 100 < minDistPct
+                res := true
+                break
+    res
+
+// ============================ CREATE ZONES ===================================
+// A pivot reported now actually occurred swingLen bars ago -> that is the OB candle.
+obShift = swingLen
+
+if not na(pl)
+    passDisp = not useDisp or isImpulse[obShift]
+    t = useBodyOB ? math.max(open[obShift], close[obShift]) : high[obShift]
+    b = useBodyOB ? math.min(open[obShift], close[obShift]) : low[obShift]
+    if passDisp and not f_tooClose(bullTop, bullBot, (t + b) / 2)
+        f_makeZone(true, t, b, bar_index - obShift)
+
+if not na(ph)
+    passDisp = not useDisp or isImpulse[obShift]
+    t = useBodyOB ? math.max(open[obShift], close[obShift]) : high[obShift]
+    b = useBodyOB ? math.min(open[obShift], close[obShift]) : low[obShift]
+    if passDisp and not f_tooClose(bearTop, bearBot, (t + b) / 2)
+        f_makeZone(false, t, b, bar_index - obShift)
+
+// ============================ UPDATE / MITIGATION ============================
+f_isMit(bool isBull, float top, float bot) =>
+    isBull ? (mitigation == "Close" ? close < bot : low  < bot) :
+             (mitigation == "Close" ? close > top : high > top)
+
+// Demand
+if array.size(bullBox) > 0
+    for i = array.size(bullBox) - 1 to 0
+        bx = array.get(bullBox, i)
+        box.set_right(bx, bar_index + extendBars)
+        ln = array.get(bullLine, i)
+        if not na(ln)
+            line.set_x2(ln, bar_index + extendBars)
+        if not array.get(bullMit, i) and f_isMit(true, array.get(bullTop, i), array.get(bullBot, i))
+            if removeMit
+                box.delete(bx)
+                if not na(ln)
+                    line.delete(ln)
+                array.remove(bullBox, i)
+                array.remove(bullLine, i)
+                array.remove(bullTop, i)
+                array.remove(bullBot, i)
+                array.remove(bullMit, i)
+            else
+                array.set(bullMit, i, true)
+                box.set_bgcolor(bx, mitCol)
+                box.set_border_color(bx, color.new(color.gray, 50))
+                if not na(ln)
+                    line.set_color(ln, color.new(color.gray, 40))
+
+// Supply
+if array.size(bearBox) > 0
+    for i = array.size(bearBox) - 1 to 0
+        bx = array.get(bearBox, i)
+        box.set_right(bx, bar_index + extendBars)
+        ln = array.get(bearLine, i)
+        if not na(ln)
+            line.set_x2(ln, bar_index + extendBars)
+        if not array.get(bearMit, i) and f_isMit(false, array.get(bearTop, i), array.get(bearBot, i))
+            if removeMit
+                box.delete(bx)
+                if not na(ln)
+                    line.delete(ln)
+                array.remove(bearBox, i)
+                array.remove(bearLine, i)
+                array.remove(bearTop, i)
+                array.remove(bearBot, i)
+                array.remove(bearMit, i)
+            else
+                array.set(bearMit, i, true)
+                box.set_bgcolor(bx, mitCol)
+                box.set_border_color(bx, color.new(color.gray, 50))
+                if not na(ln)
+                    line.set_color(ln, color.new(color.gray, 40))
+
+// ============================ ALERTS =========================================
+f_inAny(float[] tops, float[] bots) =>
+    hit = false
+    if array.size(tops) > 0
+        for i = 0 to array.size(tops) - 1
+            if low <= array.get(tops, i) and high >= array.get(bots, i)
+                hit := true
+                break
+    hit
+
+alertcondition(f_inAny(bullTop, bullBot), "Price in Demand Zone", "Price tapped a Demand / Bullish OB")
+alertcondition(f_inAny(bearTop, bearBot), "Price in Supply Zone", "Price tapped a Supply / Bearish OB")
+
+// ============================ DASHBOARD ======================================
+var table dash = na
+if showDash and barstate.islast
+    if na(dash)
+        dash := table.new(f_pos(dashPos), 3, dashRows + 1, border_width=1, frame_color=color.new(color.gray,50), frame_width=1)
+    table.clear(dash, 0, 0, 2, dashRows)
+    sz = f_tsize(dashSize)
+    table.cell(dash, 0, 0, "Type",   text_color=color.white, bgcolor=color.new(color.gray,20), text_size=sz)
+    table.cell(dash, 1, 0, "Level",  text_color=color.white, bgcolor=color.new(color.gray,20), text_size=sz)
+    table.cell(dash, 2, 0, "Dist %", text_color=color.white, bgcolor=color.new(color.gray,20), text_size=sz)
+
+    row = 1
+    // Supply (bearish) — highest first
+    nB = array.size(bearBox)
+    if nB > 0
+        for i = nB - 1 to 0
+            if row > dashRows
+                break
+            lvl  = array.get(bearTop, i)
+            dist = (lvl - close) / close * 100
+            mit  = array.get(bearMit, i)
+            table.cell(dash, 0, row, "Bearish", text_color=mit ? color.gray : color.red,  text_size=sz)
+            table.cell(dash, 1, row, str.tostring(lvl, format.mintick), text_color=mit ? color.gray : color.white, text_size=sz)
+            table.cell(dash, 2, row, str.tostring(dist, "#.##") + "%", text_color=mit ? color.gray : color.red, text_size=sz)
+            row += 1
+    // Demand (bullish)
+    nL = array.size(bullBox)
+    if nL > 0
+        for i = nL - 1 to 0
+            if row > dashRows
+                break
+            lvl  = array.get(bullBot, i)
+            dist = (lvl - close) / close * 100
+            mit  = array.get(bullMit, i)
+            table.cell(dash, 0, row, "Bullish", text_color=mit ? color.gray : color.teal, text_size=sz)
+            table.cell(dash, 1, row, str.tostring(lvl, format.mintick), text_color=mit ? color.gray : color.white, text_size=sz)
+            table.cell(dash, 2, row, str.tostring(dist, "#.##") + "%", text_color=mit ? color.gray : color.teal, text_size=sz)
+            row += 1
