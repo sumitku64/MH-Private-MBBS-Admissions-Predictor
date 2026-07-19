@@ -8,6 +8,7 @@ import DropYearEngine from './tools/DropYearEngine';
 import ChoiceFilling from './tools/ChoiceFilling';
 import SeatMovement from './tools/SeatMovement';
 import ROICalculator from './tools/ROICalculator';
+import AIQCutoffs from './tools/AIQCutoffs';
 import AdminPanel from './tools/AdminPanel';
 
 export const TOOLS = [
@@ -18,6 +19,7 @@ export const TOOLS = [
   { id: 'choicefill',    label: 'Choice Filling Optimizer',   phase: 'P2', icon: '📝', status: 'live', group: 'Phase 2' },
   { id: 'seatmove',      label: 'Seat Movement Simulator',    phase: 'P2', icon: '📊', status: 'live', group: 'Phase 2' },
   { id: 'roi',           label: 'MBBS ROI Calculator',        phase: 'P3', icon: '💰', status: 'live', group: 'Phase 2' },
+  { id: 'aiq',           label: 'AIQ Cutoffs (All India)',    phase: 'P3', icon: '🇮🇳', status: 'live', group: 'Phase 2' },
 ];
 
 const TOOL_MAP = {
@@ -28,6 +30,7 @@ const TOOL_MAP = {
   choicefill:    ChoiceFilling,
   seatmove:      SeatMovement,
   roi:           ROICalculator,
+  aiq:           AIQCutoffs,
   admin:         AdminPanel,
 };
 
