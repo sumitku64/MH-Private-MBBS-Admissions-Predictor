@@ -6,12 +6,16 @@ import LeadCaptureModal from '../components/LeadCaptureModal';
 
 const SAFETY_MARGIN = 0.08;
 const BUDGET_CAP    = 1000000;
+const MGMT_MARGIN   = 100; // management quota historically closes ~60–100 marks below state-quota cutoff
 
-function getProb(score, cutoff) {
-  if (!cutoff) return 'low';
-  if (score >= cutoff) return 'high';
-  if (score >= Math.round(cutoff * (1 - SAFETY_MARGIN))) return 'borderline';
-  return 'low';
+function getProb(score, cutoff, canAfford) {
+  if (!cutoff) return { prob: 'low', viaMgmt: false };
+  if (score >= cutoff) return { prob: 'high', viaMgmt: false };
+  if (score >= Math.round(cutoff * (1 - SAFETY_MARGIN))) {
+    return canAfford ? { prob: 'high', viaMgmt: true } : { prob: 'borderline', viaMgmt: false };
+  }
+  if (canAfford && score >= cutoff - MGMT_MARGIN) return { prob: 'borderline', viaMgmt: true };
+  return { prob: 'low', viaMgmt: false };
 }
 
 function getFee(fees, cat, gender) {
@@ -117,7 +121,7 @@ function StatCard({ label, value, icon, filterKey, active, onFilter, colorCls })
 }
 
 function CollegeCard({ college, score, quoteIdx }) {
-  const { name, code, seats, cutoffs, fee, cutoff, prob, hasConcession, isBudget } = college;
+  const { name, code, seats, cutoffs, fee, cutoff, prob, viaMgmt, hasConcession, isBudget } = college;
   const p   = PC[prob];
   const pct = cutoff ? Math.min(100, Math.round((score / cutoff) * 100)) : 0;
   const { quote } = MEDICAL_QUOTES[quoteIdx % MEDICAL_QUOTES.length];
@@ -155,6 +159,9 @@ function CollegeCard({ college, score, quoteIdx }) {
 
       <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center gap-2">
         <span className="text-xs font-bold text-slate-800">{fmtIN(fee)}<span className="font-normal text-slate-500">/yr</span></span>
+        {viaMgmt && (
+          <span className="text-[9.5px] bg-indigo-100 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded-full font-bold">Mgmt Quota Route</span>
+        )}
         {hasConcession && (
           <span className="text-[9.5px] bg-violet-100 text-violet-700 border border-violet-200 px-1.5 py-0.5 rounded-full font-bold">♀ Concession</span>
         )}
@@ -228,11 +235,12 @@ export default function NeetPredictor() {
   const processed = useMemo(() => colleges.map(c => {
     const cutoff        = c.cutoffs[year]?.[category] ?? null;
     const fee           = getFee(c.fees, category, gender);
-    const prob          = getProb(score, cutoff);
+    const canAfford     = fee != null && fee <= budget;
+    const { prob, viaMgmt } = getProb(score, cutoff, canAfford);
     const hasConcession = gender === 'female' && (category === 'obc' || category === 'sebc');
     const isBudget      = fee != null && fee <= BUDGET_CAP;
-    return { ...c, cutoff, fee, prob, hasConcession, isBudget, _cat: category };
-  }), [score, category, gender, year]);
+    return { ...c, cutoff, fee, prob, viaMgmt, hasConcession, isBudget, _cat: category };
+  }), [colleges, score, category, gender, year, budget]);
 
   const stats = useMemo(() => ({
     total:      processed.length,
