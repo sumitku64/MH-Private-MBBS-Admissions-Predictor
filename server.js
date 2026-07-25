@@ -461,9 +461,11 @@ app.post('/api/auth/register', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   // Also save as lead
-  await adminSupabase.from('leads').insert({
-    user_name: name.trim(), phone: digits, user_score: neet_score ?? null, tool: 'register',
-  }).catch(() => {});
+  try {
+    await adminSupabase.from('leads').insert({
+      user_name: name.trim(), phone: digits, user_score: neet_score ?? null, tool: 'register',
+    });
+  } catch (err) {}
 
   res.json({ ok: true, pin, student: { name: student.name, phone: student.phone, neet_score: student.neet_score, category: student.category, gender: student.gender } });
 });
