@@ -3,6 +3,7 @@ import { CATEGORIES, GENDERS, MEDICAL_QUOTES } from '../data';
 import { useCollegeData } from '../lib/useCollegeData';
 import { useUser } from '../context/UserContext';
 import LeadCaptureModal from '../components/LeadCaptureModal';
+import { API_BASE } from '../lib/api';
 
 const SAFETY_MARGIN = 0.08;
 const BUDGET_CAP    = 1000000;
@@ -219,7 +220,7 @@ export default function NeetPredictor() {
 
   function handleSaveShortlist() {
     if (!profile.isRegistered) { setShowModal(true); return; }
-    fetch('/api/leads', {
+    fetch(`${API_BASE}/api/leads`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

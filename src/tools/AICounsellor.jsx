@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { API_BASE } from '../lib/api';
 
 const SUGGESTIONS = [
   'What NEET score do I need for private MBBS in Maharashtra?',
@@ -127,7 +128,7 @@ export default function AICounsellor() {
     abortRef.current = controller;
 
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: newApiHistory }),

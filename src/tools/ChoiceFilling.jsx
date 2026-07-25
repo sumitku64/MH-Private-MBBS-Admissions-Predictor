@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useCollegeData } from '../lib/useCollegeData';
 import { useUser } from '../context/UserContext';
 import LeadCaptureModal from '../components/LeadCaptureModal';
+import { API_BASE } from '../lib/api';
 
 const CATEGORIES = [
   { value: 'open', label: 'Open / General' },
@@ -86,7 +87,7 @@ export default function ChoiceFilling() {
   function handleSaveList() {
     if (choices.length === 0) return;
     if (!profile.isRegistered) { setShowModal(true); return; }
-    fetch('/api/leads', {
+    fetch(`${API_BASE}/api/leads`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

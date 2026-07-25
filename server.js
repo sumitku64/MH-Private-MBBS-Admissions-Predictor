@@ -484,13 +484,19 @@ app.post('/api/admin/cutoffs', async (req, res) => {
   res.json({ ok: true, college: cols[0].name });
 });
 
-// ── Production static serving ─────────────────────────────────────────────────
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist')));
-  app.get('/{*splat}', (_req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-  });
-}
+// ── Health check (used by Railway) ──────────────────────────────────────────
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, uptime: process.uptime(), ts: new Date().toISOString() });
+});
+
+// ── Production static serving (only when frontend is co-located) ──────────────
+// Disabled: frontend is served from Vercel; backend is API-only on Railway.
+// if (process.env.NODE_ENV === 'production') {
+//   app.use(express.static(path.join(__dirname, 'dist')));
+//   app.get('/{*splat}', (_req, res) => {
+//     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+//   });
+// }
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => console.log(`Dhruv backend running on http://localhost:${PORT}`));

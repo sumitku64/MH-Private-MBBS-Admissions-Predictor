@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useUser } from '../context/UserContext';
+import { API_BASE } from '../lib/api';
 
 export default function LeadCaptureModal({ onClose, toolId, scoreHint }) {
   const { register } = useUser();
@@ -19,7 +20,7 @@ export default function LeadCaptureModal({ onClose, toolId, scoreHint }) {
     setError('');
 
     try {
-      await fetch('/api/leads', {
+      await fetch(`${API_BASE}/api/leads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

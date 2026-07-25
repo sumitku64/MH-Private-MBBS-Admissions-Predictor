@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useCollegeData } from '../lib/useCollegeData';
+import { API_BASE } from '../lib/api';
 
 const CATEGORIES = [
   { value: 'open', label: 'Open / General' },
@@ -55,7 +56,7 @@ export default function SeatMovement() {
     if (alertPhone.length !== 10) return;
     setAlertLoading(true);
     try {
-      await fetch('/api/alerts', {
+      await fetch(`${API_BASE}/api/alerts`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: alertPhone, category, round: 'mop-up' }),

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { API_BASE } from '../lib/api';
 
 const CAT_OPTIONS = ['open', 'obc', 'sebc', 'vjnt', 'sc', 'st'];
 
@@ -15,7 +16,7 @@ export default function AdminPanel() {
     setAuthLoading(true);
     setAuthError('');
     try {
-      const res = await fetch('/api/admin/verify', {
+      const res = await fetch(`${API_BASE}/api/admin/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
@@ -45,8 +46,8 @@ export default function AdminPanel() {
     setDataLoading(true);
     try {
       const [cutRes, leadRes] = await Promise.all([
-        fetch(`/api/admin/data?year=${yearFilter}`, { headers: { 'X-Admin-Password': key } }),
-        fetch('/api/admin/leads',                   { headers: { 'X-Admin-Password': key } }),
+        fetch(`${API_BASE}/api/admin/data?year=${yearFilter}`, { headers: { 'X-Admin-Password': key } }),
+        fetch(`${API_BASE}/api/admin/leads`,                   { headers: { 'X-Admin-Password': key } }),
       ]);
       if (cutRes.ok)  setCutoffs(await cutRes.json());
       if (leadRes.ok) setLeads(await leadRes.json());
@@ -66,7 +67,7 @@ export default function AdminPanel() {
     setSaving(true);
     setSaveMsg('');
     try {
-      const res = await fetch('/api/admin/cutoffs', {
+      const res = await fetch(`${API_BASE}/api/admin/cutoffs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPwd },
         body: JSON.stringify(form),
