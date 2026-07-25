@@ -13,10 +13,24 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
+// ── CORS — supports comma-separated list of origins, or '*' for all ───────────
+const CORS_ORIGINS = (process.env.CORS_ORIGIN ?? '*')
+  .split(',')
+  .map(o => o.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || false,
+  origin: (origin, cb) => {
+    // Allow server-to-server (no origin), wildcard, or exact match
+    if (!origin || CORS_ORIGINS.includes('*') || CORS_ORIGINS.includes(origin)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`CORS: origin "${origin}" not allowed`));
+    }
+  },
   methods: ['GET', 'POST'],
   allowedHeaders: ['Content-Type', 'X-Admin-Password'],
+  credentials: true,
 }));
 
 app.use(express.json());
