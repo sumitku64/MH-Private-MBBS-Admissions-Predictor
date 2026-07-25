@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { CATEGORIES, GENDERS, MEDICAL_QUOTES } from '../data';
 import { useCollegeData } from '../lib/useCollegeData';
 import { useUser } from '../context/UserContext';
-import LeadCaptureModal from '../components/LeadCaptureModal';
+import AuthModal from '../components/AuthModal';
 import { API_BASE } from '../lib/api';
 
 const SAFETY_MARGIN = 0.08;
@@ -209,7 +209,7 @@ export default function NeetPredictor() {
   const [sortBy,    setSortBy]    = useState('probability');
   const [quoteOff,  setQuoteOff]  = useState(0);
   const { collegeData: colleges } = useCollegeData();
-  const { profile }               = useUser();
+  const { profile, saveShortlist } = useUser();
   const [showModal,  setShowModal]  = useState(false);
 
   useEffect(() => {
@@ -220,17 +220,11 @@ export default function NeetPredictor() {
 
   function handleSaveShortlist() {
     if (!profile.isRegistered) { setShowModal(true); return; }
-    fetch(`${API_BASE}/api/leads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userName:  profile.userName,
-        phone:     profile.phone,
-        userScore: score,
-        tool:      'neet-predictor',
-        timestamp: new Date().toISOString(),
-      }),
-    }).catch(() => {});
+    // Save to DB via context (persists across sessions)
+    const toSave = filtered
+      .filter(c => c.prob !== 'low')
+      .map(c => ({ code: c.code, name: c.name, prob: c.prob, fee: c.fee, cutoff: c.cutoff }));
+    saveShortlist(toSave);
   }
 
   const processed = useMemo(() => colleges.map(c => {
@@ -269,12 +263,12 @@ export default function NeetPredictor() {
   return (
     <>
       {showModal && (
-        <LeadCaptureModal
+        <AuthModal
           onClose={() => setShowModal(false)}
-          toolId="neet-predictor"
           scoreHint={score}
         />
       )}
+
 
       <div className="flex flex-col md:flex-row h-full">
         {/* ── Left control panel ── */}

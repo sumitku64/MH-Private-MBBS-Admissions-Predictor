@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useCollegeData } from '../lib/useCollegeData';
 import { useUser } from '../context/UserContext';
-import LeadCaptureModal from '../components/LeadCaptureModal';
+import AuthModal from '../components/AuthModal';
 import { API_BASE } from '../lib/api';
 
 const CATEGORIES = [
@@ -108,9 +108,8 @@ export default function ChoiceFilling() {
   return (
     <>
       {showModal && (
-        <LeadCaptureModal
+        <AuthModal
           onClose={() => setShowModal(false)}
-          toolId="choice-filling"
           scoreHint={hasScore ? sc : null}
         />
       )}

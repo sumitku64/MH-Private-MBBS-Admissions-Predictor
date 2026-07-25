@@ -418,7 +418,145 @@ app.post('/api/tools/choicefill', (req, res) => {
   res.json({ score, category, gender, year, totalChoices: choices.length, choices });
 });
 
+// ── Student Auth helpers ───────────────────────────────────────────────────────
+function genPin() {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
+async function verifyStudent(phone, pin) {
+  if (!adminSupabase) return null;
+  const { data } = await adminSupabase
+    .from('students')
+    .select('*')
+    .eq('phone', phone)
+    .eq('pin', pin)
+    .single();
+  return data ?? null;
+}
+
+// POST /api/auth/register
+app.post('/api/auth/register', async (req, res) => {
+  const { name, phone, neet_score, category, gender } = req.body ?? {};
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (!name?.trim() || digits.length !== 10) {
+    return res.status(400).json({ error: 'name and valid 10-digit phone are required.' });
+  }
+  if (!adminSupabase) return res.status(503).json({ error: 'Database not configured.' });
+
+  // Check if already registered
+  const { data: existing } = await adminSupabase
+    .from('students').select('phone, pin').eq('phone', digits).single();
+
+  if (existing) {
+    return res.status(409).json({ error: 'Phone already registered. Please login with your PIN.' });
+  }
+
+  const pin = genPin();
+  const { data: student, error } = await adminSupabase
+    .from('students')
+    .insert({ name: name.trim(), phone: digits, neet_score: neet_score ?? null, category: category ?? 'open', gender: gender ?? 'any', pin })
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Also save as lead
+  await adminSupabase.from('leads').insert({
+    user_name: name.trim(), phone: digits, user_score: neet_score ?? null, tool: 'register',
+  }).catch(() => {});
+
+  res.json({ ok: true, pin, student: { name: student.name, phone: student.phone, neet_score: student.neet_score, category: student.category, gender: student.gender } });
+});
+
+// POST /api/auth/login
+app.post('/api/auth/login', async (req, res) => {
+  const { phone, pin } = req.body ?? {};
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (digits.length !== 10 || !pin) {
+    return res.status(400).json({ error: 'Phone and PIN are required.' });
+  }
+  if (!adminSupabase) return res.status(503).json({ error: 'Database not configured.' });
+
+  const student = await verifyStudent(digits, String(pin));
+  if (!student) return res.status(401).json({ error: 'Invalid phone or PIN.' });
+
+  // Update last_seen
+  await adminSupabase.from('students').update({ last_seen_at: new Date().toISOString() }).eq('phone', digits);
+
+  // Load shortlist
+  const { data: shortlist } = await adminSupabase
+    .from('student_shortlists').select('*').eq('student_phone', digits).order('saved_at', { ascending: false });
+
+  // Load last 50 chat messages
+  const { data: chat } = await adminSupabase
+    .from('student_chat_history').select('role, content, created_at')
+    .eq('student_phone', digits).order('created_at', { ascending: true }).limit(50);
+
+  res.json({
+    ok: true,
+    student: { name: student.name, phone: student.phone, neet_score: student.neet_score, category: student.category, gender: student.gender },
+    shortlist: shortlist ?? [],
+    chat: (chat ?? []).map(m => ({ role: m.role, content: m.content })),
+  });
+});
+
+// POST /api/student/shortlist  — save/replace full shortlist
+app.post('/api/student/shortlist', async (req, res) => {
+  const { phone, pin, colleges } = req.body ?? {};
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (!adminSupabase) return res.status(503).json({ error: 'Database not configured.' });
+
+  const student = await verifyStudent(digits, String(pin ?? ''));
+  if (!student) return res.status(401).json({ error: 'Invalid phone or PIN.' });
+  if (!Array.isArray(colleges)) return res.status(400).json({ error: 'colleges array required.' });
+
+  // Delete old shortlist then re-insert
+  await adminSupabase.from('student_shortlists').delete().eq('student_phone', digits);
+
+  if (colleges.length > 0) {
+    const rows = colleges.map(c => ({
+      student_phone: digits,
+      college_code:  c.code,
+      college_name:  c.name ?? null,
+      probability:   c.prob ?? null,
+      fee:           c.fee ?? null,
+      cutoff:        c.cutoff ?? null,
+    }));
+    await adminSupabase.from('student_shortlists').insert(rows);
+  }
+
+  res.json({ ok: true, saved: colleges.length });
+});
+
+// POST /api/student/chat  — append chat messages
+app.post('/api/student/chat', async (req, res) => {
+  const { phone, pin, messages } = req.body ?? {};
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (!adminSupabase) return res.status(503).json({ error: 'Database not configured.' });
+
+  const student = await verifyStudent(digits, String(pin ?? ''));
+  if (!student) return res.status(401).json({ error: 'Invalid phone or PIN.' });
+  if (!Array.isArray(messages) || messages.length === 0) return res.status(400).json({ error: 'messages array required.' });
+
+  const rows = messages
+    .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content)
+    .map(m => ({ student_phone: digits, role: m.role, content: String(m.content).slice(0, 8000) }));
+
+  if (rows.length > 0) await adminSupabase.from('student_chat_history').insert(rows);
+
+  // Keep only last 100 messages per student (trim old ones)
+  const { data: ids } = await adminSupabase
+    .from('student_chat_history').select('id').eq('student_phone', digits)
+    .order('created_at', { ascending: false }).range(100, 9999);
+  if (ids?.length) {
+    await adminSupabase.from('student_chat_history').delete().in('id', ids.map(r => r.id));
+  }
+
+  res.json({ ok: true });
+});
+
 // ── Admin helpers ──────────────────────────────────────────────────────────────
+
 function requireAdmin(req, res) {
   const pwd = req.headers['x-admin-password'] ?? req.body?.password;
   if (!process.env.ADMIN_SECRET) {

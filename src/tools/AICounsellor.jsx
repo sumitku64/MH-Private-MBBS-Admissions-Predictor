@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { API_BASE } from '../lib/api';
+import { useUser } from '../context/UserContext';
 
 const SUGGESTIONS = [
   'What NEET score do I need for private MBBS in Maharashtra?',
@@ -89,10 +90,20 @@ function CTABanner() {
 }
 
 export default function AICounsellor() {
-  const [uiMessages, setUiMessages] = useState([
-    { role: 'dhruv', text: WELCOME, time: 'Now' },
-  ]);
-  const [apiHistory, setApiHistory] = useState([]);
+  const { chatHistory, saveChatMessages } = useUser();
+
+  const initialApi = chatHistory ?? [];
+  const initialUi = [
+    { role: 'dhruv', text: WELCOME, time: 'System' },
+    ...initialApi.map(m => ({
+      role: m.role === 'assistant' ? 'dhruv' : 'user',
+      text: m.content,
+      time: 'Saved',
+    })),
+  ];
+
+  const [uiMessages, setUiMessages] = useState(initialUi);
+  const [apiHistory, setApiHistory] = useState(initialApi);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [userMsgCount, setUserMsgCount] = useState(0);
@@ -185,7 +196,11 @@ export default function AICounsellor() {
         return updated;
       });
 
-      setApiHistory(prev => [...prev, { role: 'assistant', content: accumulated }]);
+      setApiHistory(prev => {
+        const next = [...prev, { role: 'assistant', content: accumulated }];
+        saveChatMessages(next);
+        return next;
+      });
     } catch (err) {
       if (err.name === 'AbortError') return;
 
