@@ -57,7 +57,7 @@ function AppShell() {
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-[100dvh] bg-slate-50 overflow-hidden">
 
       {/* Mobile backdrop — tap outside sidebar to close */}
       {sidebarOpen && (

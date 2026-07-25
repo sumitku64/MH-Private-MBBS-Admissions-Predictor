@@ -270,9 +270,9 @@ export default function NeetPredictor() {
       )}
 
 
-      <div className="flex flex-col md:flex-row h-full">
+      <div className="flex flex-col md:flex-row h-full overflow-y-auto md:overflow-hidden">
         {/* ── Left control panel ── */}
-        <div className="w-full md:w-72 shrink-0 bg-white border-b md:border-b-0 md:border-r border-slate-200 overflow-y-auto max-h-96 md:max-h-none">
+        <div className="w-full md:w-72 shrink-0 bg-white border-b md:border-b-0 md:border-r border-slate-200 overflow-visible md:overflow-y-auto md:max-h-none">
           <div className="p-5 space-y-6">
             <div>
               <h2 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">NEET Predictor</h2>
@@ -339,8 +339,8 @@ export default function NeetPredictor() {
           </div>
         </div>
 
-        {/* ── Right results panel ── */}
-        <div className="flex-1 overflow-auto bg-slate-50 flex flex-col">
+        {/* ── Main content (results) ── */}
+        <div className="flex-1 flex flex-col min-w-0 bg-slate-50 overflow-visible md:overflow-y-auto">
           {/* Stat cards */}
           <div className="bg-white border-b border-slate-200 p-4 shrink-0">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

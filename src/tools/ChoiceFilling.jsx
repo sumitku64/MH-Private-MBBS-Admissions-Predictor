@@ -114,9 +114,9 @@ export default function ChoiceFilling() {
         />
       )}
 
-      <div className="flex flex-col md:flex-row h-full">
+      <div className="flex flex-col md:flex-row h-full overflow-y-auto md:overflow-hidden">
         {/* ── Picker panel ── */}
-        <div className="w-full md:w-72 shrink-0 bg-white border-b md:border-b-0 md:border-r border-slate-200 flex flex-col overflow-hidden max-h-80 md:max-h-none">
+        <div className="w-full md:w-72 shrink-0 bg-white border-b md:border-b-0 md:border-r border-slate-200 flex flex-col overflow-visible md:overflow-hidden md:max-h-none">
           <div className="p-4 border-b border-slate-100 space-y-3 shrink-0">
             <div>
               <h2 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Choice Filling Optimizer</h2>
@@ -160,7 +160,7 @@ export default function ChoiceFilling() {
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
 
-          <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-1.5">
+          <div className="flex-1 overflow-visible md:overflow-y-auto px-3 pb-3 space-y-1.5">
             {available.length === 0 ? (
               <p className="text-center text-xs text-slate-400 py-8">All colleges added to your list</p>
             ) : available.map(c => {
@@ -187,8 +187,8 @@ export default function ChoiceFilling() {
           </div>
         </div>
 
-        {/* ── Choice list panel ── */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-slate-50">
+        {/* ── Main list (right) ── */}
+        <div className="flex-1 flex flex-col min-w-0 bg-slate-50 overflow-visible md:overflow-y-auto">
           <div className="bg-white border-b border-slate-200 px-5 py-3 flex items-center gap-3 shrink-0">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-bold text-slate-900">Your Mock Choice List</p>
@@ -236,7 +236,8 @@ export default function ChoiceFilling() {
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto p-5">
+          {/* Scrollable list area */}
+          <div className="flex-1 overflow-visible md:overflow-y-auto p-4 md:p-6 pb-20">
             {choices.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full gap-5 text-center">
                 <span className="text-5xl">📝</span>

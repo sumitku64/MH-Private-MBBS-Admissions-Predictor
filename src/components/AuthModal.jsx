@@ -58,7 +58,7 @@ export default function AuthModal({ onClose, scoreHint }) {
       <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" onClick={onClose} />
 
-        <div className="auth-card relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md overflow-hidden">
+        <div className="auth-card relative bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-md overflow-hidden flex flex-col max-h-[90dvh]">
 
           {/* Header */}
           <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 pt-6 pb-5">
@@ -103,7 +103,7 @@ export default function AuthModal({ onClose, scoreHint }) {
             </div>
           ) : tab === 'register' ? (
             /* ── Register Form ── */
-            <form onSubmit={handleRegister} className="px-6 py-5 space-y-4">
+            <form onSubmit={handleRegister} className="px-6 py-5 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2">
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Full Name</label>
@@ -160,7 +160,7 @@ export default function AuthModal({ onClose, scoreHint }) {
             </form>
           ) : (
             /* ── Login Form ── */
-            <form onSubmit={handleLogin} className="px-6 py-6 space-y-4">
+            <form onSubmit={handleLogin} className="px-6 py-6 space-y-4 overflow-y-auto">
               <p className="text-sm text-slate-600 bg-slate-50 rounded-xl p-3 border border-slate-100">
                 Welcome back! Enter your phone number and 4-digit PIN to restore your profile, shortlist, and chat history.
               </p>
