@@ -24,13 +24,25 @@ export function UserProvider({ children }) {
   const stored = loadStored();
 
   const [profile, setProfile] = useState({
-    userName:     stored?.userName     ?? '',
-    phone:        stored?.phone        ?? '',
-    pin:          stored?.pin          ?? '',
-    userScore:    stored?.userScore    ?? null,
-    category:     stored?.category     ?? 'open',
-    gender:       stored?.gender       ?? 'any',
-    isRegistered: stored?.isRegistered ?? false,
+    userName:         stored?.userName         ?? '',
+    phone:            stored?.phone            ?? '',
+    pin:              stored?.pin              ?? '',
+    userScore:        stored?.userScore        ?? null,
+    category:         stored?.category         ?? 'open',
+    gender:           stored?.gender           ?? 'any',
+    annualBudget:     stored?.annualBudget     ?? 1500000,
+    domicileState:    stored?.domicileState    ?? 'MH',
+    education:        stored?.education        ?? { class10State: 'MH', class12State: 'MH', class12Year: '2024', qualification: '12th Science' },
+    dob:              stored?.dob              ?? '',
+    allIndiaRank:     stored?.allIndiaRank     ?? '',
+    categoryRank:     stored?.categoryRank     ?? '',
+    preferredRegions: stored?.preferredRegions ?? [],
+    needsHostel:      stored?.needsHostel      ?? false,
+    fatherName:       stored?.fatherName       ?? '',
+    altPhone:         stored?.altPhone         ?? '',
+    preferredInstituteType: stored?.preferredInstituteType ?? [],
+    reservationSubcategory: stored?.reservationSubcategory ?? [],
+    isRegistered:     stored?.isRegistered     ?? false,
   });
 
   const [shortlist,   setShortlist]   = useState(stored?.shortlist   ?? []);
@@ -46,14 +58,17 @@ export function UserProvider({ children }) {
   }, [profile, shortlist, chatHistory]);
 
   // ── Register (new user) ────────────────────────────────────────────────────
-  async function register({ name, phone, userScore, category, gender }) {
+  async function register({ name, phone, userScore, category, gender, budget, domicileState, education }) {
     setAuthLoading(true);
     setAuthError('');
     try {
       const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, phone, neet_score: userScore ?? null, category: category ?? 'open', gender: gender ?? 'any' }),
+        body: JSON.stringify({ 
+          name, phone, neet_score: userScore ?? null, category: category ?? 'open', gender: gender ?? 'any',
+          annualBudget: budget, domicileState, education
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -68,6 +83,14 @@ export function UserProvider({ children }) {
         userScore: data.student.neet_score,
         category:  data.student.category ?? 'open',
         gender:    data.student.gender   ?? 'any',
+        annualBudget: data.student.annual_budget ?? 1500000,
+        domicileState: data.student.domicile_state ?? 'MH',
+        education: data.student.educational_details ?? { class10State: 'MH', class12State: 'MH', class12Year: '2024', qualification: '12th Science' },
+        dob:          data.student.dob ?? '',
+        allIndiaRank: data.student.allIndiaRank ?? '',
+        categoryRank: data.student.categoryRank ?? '',
+        preferredRegions: data.student.preferredRegions ?? [],
+        needsHostel:  data.student.needsHostel ?? false,
         isRegistered: true,
       };
       setProfile(p);
@@ -106,6 +129,18 @@ export function UserProvider({ children }) {
         userScore:    data.student.neet_score,
         category:     data.student.category ?? 'open',
         gender:       data.student.gender   ?? 'any',
+        annualBudget: data.student.annual_budget ?? 1500000,
+        domicileState: data.student.domicile_state ?? 'MH',
+        education: data.student.educational_details ?? { class10State: 'MH', class12State: 'MH', class12Year: '2024', qualification: '12th Science' },
+        dob:          data.student.dob ?? '',
+        allIndiaRank: data.student.allIndiaRank ?? '',
+        categoryRank: data.student.categoryRank ?? '',
+        preferredRegions: data.student.preferredRegions ?? [],
+        needsHostel:  data.student.needsHostel ?? false,
+        fatherName:   data.student.fatherName ?? '',
+        altPhone:     data.student.altPhone ?? '',
+        preferredInstituteType: data.student.preferredInstituteType ?? [],
+        reservationSubcategory: data.student.reservationSubcategory ?? [],
         isRegistered: true,
       };
       setProfile(p);
@@ -155,12 +190,41 @@ export function UserProvider({ children }) {
     } catch {}
   }, [profile]);
 
+  // ── Update Profile ───────────────────────────────────────────────────────────
+  const updateProfile = useCallback(async (newProfileData) => {
+    setProfile(prev => ({ ...prev, ...newProfileData }));
+    
+    // Attempt to sync to cloud DB if user is registered
+    if (!profile.isRegistered || !profile.phone || !profile.pin) return { ok: true };
+
+    try {
+      const res = await fetch(`${API_BASE}/api/student/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          phone: profile.phone, 
+          pin: profile.pin, 
+          profile: newProfileData 
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        console.error('Failed to sync profile to DB:', data.error);
+        return { ok: false, error: data.error };
+      }
+      return { ok: true };
+    } catch (err) {
+      console.error('Network error syncing profile:', err);
+      return { ok: false, error: 'Network error' };
+    }
+  }, [profile]);
+
   return (
     <UserContext.Provider value={{
       profile, shortlist, chatHistory,
       authLoading, authError, setAuthError,
       register, login, logout,
-      saveShortlist, saveChatMessages,
+      saveShortlist, saveChatMessages, updateProfile
     }}>
       {children}
     </UserContext.Provider>

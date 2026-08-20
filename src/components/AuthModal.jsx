@@ -9,6 +9,25 @@ const CATEGORIES = [
   { value: 'st',    label: 'ST'         },
 ];
 
+export const INDIAN_STATES = [
+  "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", 
+  "Bihar", "Chandigarh", "Chhattisgarh", "Dadra and Nagar Haveli and Daman and Diu", 
+  "Delhi", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir", 
+  "Jharkhand", "Karnataka", "Kerala", "Ladakh", "Lakshadweep", "Madhya Pradesh", 
+  "Maharashtra", "Manipur", "Meghalaya", "Mizoram", "Nagaland", "Odisha", 
+  "Puducherry", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", 
+  "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal", "Other"
+];
+
+export const QUALIFICATIONS = [
+  "12th Science (PCB)",
+  "B.Sc. (Physics/Chemistry/Biology)",
+  "PUC (Pre-University)",
+  "12th Equivalent / NIOS",
+  "Diploma in Pharmacy/Nursing",
+  "Other"
+];
+
 export default function AuthModal({ onClose, scoreHint }) {
   const { register, login, authLoading, authError, setAuthError } = useUser();
   const [tab,   setTab]   = useState('register'); // 'register' | 'login'
@@ -20,6 +39,9 @@ export default function AuthModal({ onClose, scoreHint }) {
   const [score,    setScore]    = useState(scoreHint != null ? String(scoreHint) : '');
   const [category, setCategory] = useState('open');
   const [gender,   setGender]   = useState('any');
+  const [budget,   setBudget]   = useState(1500000);
+  const [domicileState, setDomicileState] = useState('MH');
+  const [education, setEducation] = useState({ class10State: 'MH', class12State: 'MH', class12Year: '2024', qualification: '12th Science' });
 
   // Login fields
   const [lPhone, setLPhone] = useState('');
@@ -32,7 +54,10 @@ export default function AuthModal({ onClose, scoreHint }) {
     const digits = phone.replace(/\D/g, '');
     if (!name.trim())         return setAuthError('Please enter your full name.');
     if (digits.length !== 10) return setAuthError('Enter a valid 10-digit phone number.');
-    const result = await register({ name: name.trim(), phone: digits, userScore: score ? Number(score) : null, category, gender });
+    const result = await register({ 
+      name: name.trim(), phone: digits, userScore: score ? Number(score) : null, category, gender,
+      budget, domicileState, education 
+    });
     if (result.ok) setDone({ pin: result.pin });
   }
 
@@ -146,6 +171,53 @@ export default function AuthModal({ onClose, scoreHint }) {
                         {l}
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Annual Budget (₹)</label>
+                  <input type="number" value={budget} onChange={e => setBudget(Number(e.target.value))}
+                    step="50000" min="0"
+                    className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Domicile State</label>
+                  <select value={domicileState} onChange={e => setDomicileState(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                    {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+
+                <div className="col-span-2 mt-2">
+                  <h4 className="text-xs font-bold text-slate-700 mb-3 border-b border-slate-100 pb-2">Educational Details</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">10th State</label>
+                      <select value={education.class10State} onChange={e => setEducation({...education, class10State: e.target.value})}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none bg-white">
+                        {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">12th State</label>
+                      <select value={education.class12State} onChange={e => setEducation({...education, class12State: e.target.value})}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none bg-white">
+                        {INDIAN_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">12th Year</label>
+                      <input type="number" value={education.class12Year} onChange={e => setEducation({...education, class12Year: e.target.value})}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Qualification</label>
+                      <select value={education.qualification} onChange={e => setEducation({...education, qualification: e.target.value})}
+                        className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none bg-white">
+                        {QUALIFICATIONS.map(q => <option key={q} value={q}>{q}</option>)}
+                      </select>
+                    </div>
                   </div>
                 </div>
               </div>

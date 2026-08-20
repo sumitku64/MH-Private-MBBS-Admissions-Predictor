@@ -3,6 +3,10 @@ import { useCollegeData } from '../lib/useCollegeData';
 import { useUser } from '../context/UserContext';
 import AuthModal from '../components/AuthModal';
 import { API_BASE } from '../lib/api';
+import { calcFee } from '../lib/predictionEngine';
+
+// Fee calculation is now handled by the shared predictionEngine module so
+// the result is identical to what NeetPredictor and the backend compute.
 
 const CATEGORIES = [
   { value: 'open', label: 'Open / General' },
@@ -14,18 +18,13 @@ const CATEGORIES = [
   { value: 'ews',  label: 'EWS' },
 ];
 
-const CUTOFF_KEY   = { open:'open', obc:'obc', sebc:'sebc', vjnt:'vjnt', sc:'sc', st:'st', ews:'open' };
-const FEE_KEY_MALE   = { open:'open', obc:'obc_ebc_sebc_male',   sebc:'obc_ebc_sebc_male',   vjnt:'vjnt_sbc', sc:'sc_st', st:'sc_st', ews:'open' };
-const FEE_KEY_FEMALE = { open:'open', obc:'obc_ebc_sebc_female', sebc:'obc_ebc_sebc_female', vjnt:'vjnt_sbc', sc:'sc_st', st:'sc_st', ews:'open' };
+// getCutoff is a component-local helper — it is NOT a probability business
+// rule, so it stays here rather than being added to predictionEngine.
+const CUTOFF_KEY = { open:'open', obc:'obc', sebc:'sebc', vjnt:'vjnt', sc:'sc', st:'st', ews:'open' };
 
 function getCutoff(college, cat) {
   const c = college.cutoffs[2024];
   return c ? (c[CUTOFF_KEY[cat]] ?? c.open) : null;
-}
-
-function getFee(college, cat, gender) {
-  const key = (gender === 'female' ? FEE_KEY_FEMALE : FEE_KEY_MALE)[cat] ?? 'open';
-  return college.fees[key] ?? college.fees.open ?? 0;
 }
 
 function fmtL(n) {
@@ -48,7 +47,7 @@ export default function ChoiceFilling() {
   const choiceSet = useMemo(() => new Set(choices.map(c => c.code)), [choices]);
 
   const enriched = useMemo(() =>
-    choices.map(c => ({ ...c, cutoff: getCutoff(c, category), fee: getFee(c, category, gender) })),
+    choices.map(c => ({ ...c, cutoff: getCutoff(c, category), fee: calcFee(c.fees, category, gender) ?? 0 })),
     [choices, category, gender]
   );
 
@@ -67,7 +66,7 @@ export default function ChoiceFilling() {
     const q = searchQ.toLowerCase();
     return collegeData
       .filter(c => !choiceSet.has(c.code) && (!q || c.name.toLowerCase().includes(q)))
-      .map(c => ({ ...c, cutoff: getCutoff(c, category), fee: getFee(c, category, gender) }))
+      .map(c => ({ ...c, cutoff: getCutoff(c, category), fee: calcFee(c.fees, category, gender) ?? 0 }))
       .sort((a, b) => (b.cutoff ?? 0) - (a.cutoff ?? 0));
   }, [searchQ, choiceSet, category, gender]);
 

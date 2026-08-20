@@ -4,28 +4,10 @@ import { useCollegeData } from '../lib/useCollegeData';
 import { useUser } from '../context/UserContext';
 import AuthModal from '../components/AuthModal';
 import { API_BASE } from '../lib/api';
+import { calcFee, calcProb, BUDGET_CAP } from '../lib/predictionEngine';
 
-const SAFETY_MARGIN = 0.08;
-const BUDGET_CAP    = 1000000;
-const MGMT_MARGIN   = 100; // management quota historically closes ~60–100 marks below state-quota cutoff
-
-function getProb(score, cutoff, canAfford) {
-  if (!cutoff) return { prob: 'low', viaMgmt: false };
-  if (score >= cutoff) return { prob: 'high', viaMgmt: false };
-  if (score >= Math.round(cutoff * (1 - SAFETY_MARGIN))) {
-    return canAfford ? { prob: 'high', viaMgmt: true } : { prob: 'borderline', viaMgmt: false };
-  }
-  if (canAfford && score >= cutoff - MGMT_MARGIN) return { prob: 'borderline', viaMgmt: true };
-  return { prob: 'low', viaMgmt: false };
-}
-
-function getFee(fees, cat, gender) {
-  if (cat === 'sc' || cat === 'st') return fees.sc_st;
-  if (cat === 'vjnt') return fees.vjnt_sbc;
-  if ((cat === 'obc' || cat === 'sebc') && gender === 'female') return fees.obc_ebc_sebc_female;
-  if (cat === 'obc' || cat === 'sebc') return fees.obc_ebc_sebc_male;
-  return fees.open;
-}
+// calcFee, calcProb, BUDGET_CAP are now imported from the canonical
+// predictionEngine module so frontend and backend use identical logic.
 
 const PC = {
   high: {
@@ -228,12 +210,12 @@ export default function NeetPredictor() {
   }
 
   const processed = useMemo(() => colleges.map(c => {
-    const cutoff        = c.cutoffs[year]?.[category] ?? null;
-    const fee           = getFee(c.fees, category, gender);
-    const canAfford     = fee != null && fee <= budget;
-    const { prob, viaMgmt } = getProb(score, cutoff, canAfford);
-    const hasConcession = gender === 'female' && (category === 'obc' || category === 'sebc');
-    const isBudget      = fee != null && fee <= BUDGET_CAP;
+    const cutoff            = c.cutoffs[year]?.[category] ?? null;
+    const fee               = calcFee(c.fees, category, gender);
+    const canAfford         = fee != null && fee <= budget;
+    const { prob, viaMgmt } = calcProb(score, cutoff, { canAfford });
+    const hasConcession     = gender === 'female' && (category === 'obc' || category === 'sebc');
+    const isBudget          = fee != null && fee <= BUDGET_CAP;
     return { ...c, cutoff, fee, prob, viaMgmt, hasConcession, isBudget, _cat: category };
   }), [colleges, score, category, gender, year, budget]);
 

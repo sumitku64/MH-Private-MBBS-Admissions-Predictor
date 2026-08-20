@@ -1,4 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useUser } from '../context/UserContext';
+import { Link } from 'react-router-dom';
 
 const CATEGORIES = [
   { value: 'open', label: 'Open / General' },
@@ -10,56 +12,41 @@ const CATEGORIES = [
   { value: 'ews',  label: 'EWS' },
 ];
 
-// MH approximate government MBBS cutoffs (AIQ + decent state govt college)
 const GOVT_CUTOFFS = {
   open: 610, obc: 575, sebc: 560, vjnt: 540, sc: 480, st: 430, ews: 590,
 };
 
-// Private college tiers with per-year fee ranges and minimum qualifying scores by category
 const TIERS = [
   {
-    id: 'top',
-    label: 'Top-Tier Private',
-    desc: 'Sion, Nair, BJ Medical, Grant',
-    feeMin: 1200000,
-    feeMax: 2000000,
+    id: 'top', label: 'Top-Tier Private', desc: 'Sion, Nair, BJ Medical, Grant',
+    feeMin: 1200000, feeMax: 2000000,
     minScore: { open: 570, obc: 530, sebc: 515, vjnt: 500, sc: 445, st: 385, ews: 550 },
   },
   {
-    id: 'mid',
-    label: 'Mid-Tier Private',
-    desc: 'KJ Somaiya, MGM, DY Patil, BJMC Pune',
-    feeMin: 800000,
-    feeMax: 1200000,
+    id: 'mid', label: 'Mid-Tier Private', desc: 'KJ Somaiya, MGM, DY Patil, BJMC Pune',
+    feeMin: 800000, feeMax: 1200000,
     minScore: { open: 510, obc: 470, sebc: 455, vjnt: 440, sc: 385, st: 320, ews: 490 },
   },
   {
-    id: 'lower',
-    label: 'Lower-Tier Private',
-    desc: 'Remaining approved private colleges',
-    feeMin: 500000,
-    feeMax: 800000,
+    id: 'lower', label: 'Lower-Tier Private', desc: 'Remaining approved private colleges',
+    feeMin: 500000, feeMax: 800000,
     minScore: { open: 440, obc: 400, sebc: 385, vjnt: 365, sc: 305, st: 250, ews: 420 },
   },
   {
-    id: 'management',
-    label: 'Management Quota',
-    desc: 'Direct admission, any college',
-    feeMin: 1800000,
-    feeMax: 3000000,
+    id: 'management', label: 'Management Quota', desc: 'Direct admission, any college',
+    feeMin: 1800000, feeMax: 3000000,
     minScore: { open: 350, obc: 350, sebc: 350, vjnt: 350, sc: 350, st: 350, ews: 350 },
   },
 ];
 
-// Score improvement projections per attempt
 const IMPROVEMENT = {
   '1st':  { min: 20,  avg: 45, max: 75, note: 'First-time droppers typically see the biggest jump.' },
   '2nd':  { min: 5,   avg: 22, max: 45, note: 'Diminishing returns — focus on specific weak topics.' },
   '3rd+': { min: -10, avg: 8,  max: 25, note: 'Score plateaus after 3 attempts. Risk is high.' },
 };
 
-const LOAN_RATE   = 8.5;   // annual %
-const LOAN_MONTHS = 120;   // 10 years
+const LOAN_RATE   = 8.5;
+const LOAN_MONTHS = 120;
 
 function calcEMI(principal) {
   if (principal <= 0) return 0;
@@ -77,27 +64,53 @@ function fmtEMI(n) {
   return `₹${n.toLocaleString('en-IN')}/mo`;
 }
 
-function Row({ label, value, valueClass = 'text-slate-700' }) {
-  return (
-    <div className="flex items-center justify-between text-[12px]">
-      <span className="text-slate-500">{label}</span>
-      <span className={`font-bold ${valueClass}`}>{value}</span>
-    </div>
-  );
-}
-
 export default function DropYearEngine() {
-  const [score,      setScore]      = useState('');
-  const [category,   setCategory]   = useState('open');
-  const [attempt,    setAttempt]    = useState('1st');
-  const [targetTier, setTargetTier] = useState('mid');
-  const [budget,     setBudget]     = useState(10);   // ₹L per year
-  const [submitted,  setSubmitted]  = useState(false);
+  const { profile } = useUser();
+  
+  const getAttempt = (year) => {
+    if (!year) return '1st';
+    const y = parseInt(year);
+    if (isNaN(y)) return '1st';
+    const current = new Date().getFullYear();
+    const diff = current - y;
+    if (diff <= 0) return '1st';
+    if (diff === 1) return '2nd';
+    return '3rd+';
+  };
 
-  const ready = score !== '' && !isNaN(parseInt(score)) && parseInt(score) >= 200 && parseInt(score) <= 720;
+  const [score,      setScore]      = useState(() => profile?.userScore ?? '');
+  const [category,   setCategory]   = useState(() => profile?.category ?? 'open');
+  const [attempt,    setAttempt]    = useState(() => getAttempt(profile?.education?.class12Year));
+  const [targetTier, setTargetTier] = useState('mid');
+  const [budget,     setBudget]     = useState(() => profile?.annualBudget ? Math.round(profile.annualBudget / 100000) : '');
+  
+  const isProfileReady = score !== '' && budget !== '';
+  const [submitted,  setSubmitted]  = useState(isProfileReady);
+  const [synced, setSynced] = useState(false);
+
+  useEffect(() => {
+    if (profile?.isRegistered && !synced) {
+      const s = profile.userScore ?? '';
+      const c = profile.category ?? 'open';
+      const a = getAttempt(profile.education?.class12Year);
+      const b = profile.annualBudget ? Math.round(profile.annualBudget / 100000) : '';
+      
+      setScore(s);
+      setCategory(c);
+      setAttempt(a);
+      setBudget(b);
+      
+      if (s !== '' && b !== '') {
+        setSubmitted(true);
+      }
+      setSynced(true);
+    }
+  }, [profile, synced]);
+
+  const ready = score !== '' && !isNaN(parseInt(score)) && parseInt(score) >= 200 && parseInt(score) <= 720 && budget !== '';
 
   const analysis = useMemo(() => {
-    if (!submitted) return null;
+    if (!submitted || !ready) return null;
     const sc = parseInt(score);
     if (isNaN(sc) || sc < 200 || sc > 720) return null;
 
@@ -106,56 +119,45 @@ export default function DropYearEngine() {
     const gapToGovt     = govtCutoff - sc;
     const currentYear   = new Date().getFullYear();
 
-    // Drop year score projections
     const projMin = sc + imp.min;
     const projAvg = sc + imp.avg;
     const projMax = sc + imp.max;
 
-    // Govt college probability
     const govtProb =
       projAvg >= govtCutoff + 25  ? { label: 'High',         cls: 'bg-emerald-100 text-emerald-700' } :
       projAvg >= govtCutoff        ? { label: 'Moderate',     cls: 'bg-amber-100 text-amber-700' }    :
       projAvg >= govtCutoff - 20   ? { label: 'Low–Moderate', cls: 'bg-amber-100 text-amber-700' }    :
                                      { label: 'Low',          cls: 'bg-rose-100 text-rose-700' };
 
-    // Which tiers the student qualifies for NOW
     const accessible = TIERS.filter(t => sc >= (t.minScore[category] ?? 9999));
 
-    // Chosen target tier (for Path B fee calculation)
     const target   = TIERS.find(t => t.id === targetTier) ?? TIERS[1];
     const canHitTarget = accessible.some(t => t.id === target.id);
     const useTier  = canHitTarget ? target : accessible[0] ?? null;
 
-    // 4.5-year fee totals
     const feeMin = useTier ? useTier.feeMin * 4.5 : 0;
     const feeMax = useTier ? useTier.feeMax * 4.5 : 0;
 
-    // Budget covers portion
-    const budgetTotal = budget * 100000 * 4.5;          // family budget over 4.5 years
+    const budgetTotal = (parseInt(budget) || 0) * 100000 * 4.5;
 
-    // Loan = fees − budget (floored at 0)
     const loanMin = Math.max(0, feeMin - budgetTotal);
     const loanMax = Math.max(0, feeMax - budgetTotal);
 
-    // EMI
     const emiMin = calcEMI(loanMin);
     const emiMax = calcEMI(loanMax);
 
-    // Total repayment and interest
     const repayMin = emiMin * LOAN_MONTHS;
     const repayMax = emiMax * LOAN_MONTHS;
     const intMin   = repayMin - loanMin;
     const intMax   = repayMax - loanMax;
 
-    // Timeline (from now)
     const MBBS_YEARS      = 4.5;
     const INTERN_YEARS    = 1;
-    const careerStart     = Math.ceil(currentYear + MBBS_YEARS + INTERN_YEARS);      // Path B
+    const careerStart     = Math.ceil(currentYear + MBBS_YEARS + INTERN_YEARS);
     const loanRepaid      = loanMax > 0 ? careerStart + 10 : careerStart;
-    const dropCareerStart = Math.ceil(currentYear + 1 + MBBS_YEARS + INTERN_YEARS);  // Path A (1 gap yr)
+    const dropCareerStart = Math.ceil(currentYear + 1 + MBBS_YEARS + INTERN_YEARS);
     const dropBreakEven   = loanMax > 0 ? dropCareerStart + 10 : dropCareerStart + 1;
 
-    // Recommendation logic
     let rec, recLevel;
     if (attempt === '3rd+') {
       rec = 'Private MBBS Now'; recLevel = 'Strongly Recommended';
@@ -169,7 +171,7 @@ export default function DropYearEngine() {
       rec = 'Discuss with Counsellor'; recLevel = 'Borderline Case';
     } else {
       rec = 'Private MBBS Now';
-      recLevel = budget * 100000 >= (useTier?.feeMin ?? 999999) ? 'Recommended' : 'Consider if budget allows';
+      recLevel = (parseInt(budget) || 0) * 100000 >= (useTier?.feeMin ?? 999999) ? 'Recommended' : 'Consider if budget allows';
     }
 
     return {
@@ -183,405 +185,259 @@ export default function DropYearEngine() {
       dropCareerStart, dropBreakEven,
       currentYear, rec, recLevel,
     };
-  }, [submitted, score, category, attempt, targetTier, budget]);
+  }, [submitted, ready, score, category, attempt, targetTier, budget]);
+
+  const missingFields = [];
+  if (score === '') missingFields.push('NEET Score');
+  if (budget === '') missingFields.push('Annual Budget');
 
   return (
-    <div className="flex flex-col md:flex-row h-full">
-      {/* ── Input panel ── */}
-      <div className="w-full md:w-80 shrink-0 bg-white border-b md:border-b-0 md:border-r border-slate-200 overflow-y-auto max-h-80 md:max-h-none">
-        <div className="p-5 space-y-5">
-          <div>
-            <h2 className="text-[11px] font-black text-slate-900 uppercase tracking-widest">Drop Year vs. Private MBBS</h2>
-            <p className="text-[11px] text-slate-400 mt-0.5">Financial &amp; strategic comparison engine</p>
-          </div>
+    <div className="flex flex-col lg:flex-row h-full bg-[#F8FAFC] font-sans rounded-2xl overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.08)] border border-slate-100">
+      {/* ── Input panel (Strategic Engine) ── */}
+      <div className="w-full lg:w-[420px] shrink-0 bg-white border-b lg:border-b-0 lg:border-r border-slate-100 overflow-y-auto p-8">
+        <div>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Strategic Engine</h2>
+          <p className="text-sm text-slate-500 mt-2 mb-8 leading-relaxed">
+            Configure your profile to evaluate the viability of admission vs. taking a drop year.
+          </p>
+        </div>
 
-          {/* NEET Score */}
-          <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-              Current NEET Score <span className="text-slate-300 normal-case font-normal">(200–720)</span>
-            </label>
-            <input type="number" value={score} min={200} max={720}
+        <div className="space-y-8">
+          <div className="bg-white rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
+            <div className="flex justify-between items-center mb-4">
+              <label className="text-xs font-black text-slate-700 uppercase tracking-wider">NEET Score</label>
+              <input type="number" value={score} min={200} max={720}
+                onChange={e => { setScore(e.target.value); setSubmitted(false); }}
+                placeholder="0"
+                className="w-20 bg-transparent text-right font-black text-blue-600 text-xl focus:outline-none" />
+            </div>
+            <input type="range" min={200} max={720} value={score || 200}
               onChange={e => { setScore(e.target.value); setSubmitted(false); }}
-              placeholder="e.g. 520"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-            {score && !ready && (
-              <p className="text-[10px] text-rose-500 mt-1">Enter a valid score between 200 and 720.</p>
-            )}
+              className="w-full accent-blue-600 mb-2 relative z-10" />
+            <div className="flex justify-between text-[10px] font-bold text-slate-400 relative z-10">
+              <span>200</span><span>720</span>
+            </div>
+            
+            <div className="mt-8 bg-[#F8FAFC] p-4 rounded-xl border border-slate-100 relative z-10">
+               <div className="flex justify-between items-end mb-2">
+                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Success Probability Trajectory</span>
+                 <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded">High Growth Zone</span>
+               </div>
+               <div className="flex items-end gap-1 h-16">
+                  {[400, 450, 500, 550, 600, 650, 700].map(val => (
+                    <div key={val} className="flex-1 bg-blue-100 rounded-t-sm transition-all" style={{height: `${Math.max(15, (val/720)*100)}%`, opacity: parseInt(score||0) >= val ? 1 : 0.4, backgroundColor: parseInt(score||0) >= val && parseInt(score||0) < val+50 ? '#2563eb' : '#bfdbfe'}}></div>
+                  ))}
+               </div>
+               <div className="flex justify-between text-[8px] font-bold text-slate-400 mt-2">
+                 <span>400</span><span>500</span><span className="text-blue-600 bg-blue-50 px-1 rounded">{score || 'N/A'}</span><span>650</span><span>720</span>
+               </div>
+            </div>
           </div>
 
-          {/* Category */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] font-black text-slate-700 uppercase tracking-wider block mb-2">Category</label>
+              <select value={category} onChange={e => { setCategory(e.target.value); setSubmitted(false); }} className="w-full bg-[#F8FAFC] border border-slate-100 text-slate-700 font-bold text-sm px-3 py-3 rounded-xl focus:outline-none focus:border-blue-500">
+                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label.split(' ')[0]}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-slate-700 uppercase tracking-wider block mb-2">Attempt</label>
+              <select value={attempt} onChange={e => { setAttempt(e.target.value); setSubmitted(false); }} className="w-full bg-[#F8FAFC] border border-slate-100 text-slate-700 font-bold text-sm px-3 py-3 rounded-xl focus:outline-none focus:border-blue-500">
+                {['1st', '2nd', '3rd+'].map(a => <option key={a} value={a}>{a === '1st' ? 'First Attempt' : a === '2nd' ? 'Second Attempt' : '3rd+ Attempt'}</option>)}
+              </select>
+            </div>
+          </div>
+
           <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Category</label>
-            <div className="space-y-1.5">
-              {CATEGORIES.map(c => (
-                <button key={c.value}
-                  onClick={() => { setCategory(c.value); setSubmitted(false); }}
-                  className={[
-                    'w-full text-left px-3 py-2 rounded-lg text-xs font-semibold border transition-all',
-                    category === c.value
-                      ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
-                      : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300',
-                  ].join(' ')}>
-                  {c.label}
+            <label className="text-[10px] font-black text-slate-700 uppercase tracking-wider block mb-2">Target Tier (PG Aspirations)</label>
+            <div className="flex bg-[#F8FAFC] rounded-xl p-1 border border-slate-100">
+              {TIERS.slice(0,3).map(t => (
+                <button key={t.id} onClick={() => { setTargetTier(t.id); setSubmitted(false); }}
+                  className={`flex-1 py-2.5 px-1 text-[11px] font-bold rounded-lg transition-colors ${targetTier === t.id ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-200'}`}>
+                  {t.id === 'top' ? 'AIIMS/Top Gov' : t.id === 'mid' ? 'Mid Gov' : 'Private/Deemed'}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Attempt */}
           <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Attempt Number</label>
-            <div className="flex gap-1.5">
-              {['1st', '2nd', '3rd+'].map(a => (
-                <button key={a}
-                  onClick={() => { setAttempt(a); setSubmitted(false); }}
-                  className={[
-                    'flex-1 py-2 rounded-lg text-xs font-bold border transition-all',
-                    attempt === a
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300',
-                  ].join(' ')}>
-                  {a}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Target College Tier */}
-          <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Target College Tier</label>
-            <div className="space-y-1.5">
-              {TIERS.map(t => (
-                <button key={t.id}
-                  onClick={() => { setTargetTier(t.id); setSubmitted(false); }}
-                  className={[
-                    'w-full text-left px-3 py-2 rounded-lg border transition-all',
-                    targetTier === t.id
-                      ? 'bg-indigo-50 border-indigo-300'
-                      : 'bg-white border-slate-200 hover:border-slate-300',
-                  ].join(' ')}>
-                  <p className={`text-xs font-bold ${targetTier === t.id ? 'text-indigo-700' : 'text-slate-700'}`}>{t.label}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">{t.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Annual Budget slider */}
-          <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-              Annual Family Budget
-              <span className="ml-2 text-indigo-600 font-black">₹{budget}L / yr</span>
+            <label className="text-[10px] font-black text-slate-700 uppercase tracking-wider block mb-4 flex justify-between">
+              Annual Budget (INR) <span className="text-blue-600 font-black text-xs">{budget ? `₹${budget}L` : '---'}</span>
             </label>
-            <input type="range" min={2} max={30} step={1} value={budget}
+            <input type="range" min={2} max={30} step={1} value={budget || 2}
               onChange={e => { setBudget(parseInt(e.target.value)); setSubmitted(false); }}
-              className="w-full accent-indigo-600" />
-            <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
-              <span>₹2L/yr</span><span>₹30L/yr</span>
+              className="w-full accent-blue-600" />
+            <div className="flex justify-between text-[10px] font-bold text-slate-400 mt-2">
+              <span>₹2L</span><span>₹30L+</span>
             </div>
           </div>
 
           <button onClick={() => setSubmitted(true)} disabled={!ready}
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold transition-colors disabled:opacity-40">
-            Analyse My Options →
+            className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-black transition-colors disabled:opacity-40 shadow-md">
+            Analyse Options
           </button>
         </div>
       </div>
 
       {/* ── Results panel ── */}
-      <div className="flex-1 overflow-auto bg-slate-50 p-6">
+      <div className="flex-1 overflow-y-auto p-6 md:p-10 bg-transparent">
         {!submitted || !analysis ? (
           <div className="flex flex-col items-center justify-center h-full gap-4 text-center">
-            <span className="text-5xl">⚖️</span>
-            <h3 className="text-lg font-bold text-slate-700">Drop Year vs. Private MBBS Engine</h3>
-            <p className="text-slate-400 text-sm max-w-sm leading-relaxed">
-              Enter your NEET score, category, attempt number, target college tier, and annual budget — get a side-by-side financial and strategic comparison of both paths.
-            </p>
+            <span className="text-5xl opacity-50">⚖️</span>
+            {missingFields.length > 0 ? (
+              <>
+                <h3 className="text-lg font-bold text-slate-700">Missing Profile Data</h3>
+                <p className="text-slate-500 text-sm max-w-sm leading-relaxed">
+                  To view affordability and strategic insights, please set the following in your Personal Profile: 
+                  <strong className="block mt-2 text-slate-700">{missingFields.join(' and ')}</strong>
+                </p>
+                <Link to="/profile" className="mt-4 px-6 py-2 bg-slate-800 text-white text-sm font-bold rounded-lg shadow-sm hover:bg-slate-700 transition-colors">
+                  Go to Personal Profile
+                </Link>
+                <p className="text-slate-400 text-xs mt-4 max-w-xs">Or manually enter the values in the Strategic Engine on the left to test hypothetical scenarios.</p>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-bold text-slate-700">Awaiting Profile Configuration</h3>
+                <p className="text-slate-400 text-sm max-w-sm leading-relaxed">
+                  Enter your details in the strategic engine to get a comprehensive comparison between enrolling now and taking a drop year.
+                </p>
+              </>
+            )}
           </div>
         ) : (
-          <div className="max-w-5xl space-y-5">
+          <div className="max-w-4xl mx-auto space-y-8 pb-10">
 
-            {/* Recommendation banner */}
-            {(() => {
-              const isDrop = analysis.rec === 'Drop Year';
-              const isPriv = analysis.rec === 'Private MBBS Now';
-              return (
-                <div className={`rounded-xl p-4 border shadow-sm flex items-center gap-4 flex-wrap ${isDrop ? 'bg-emerald-50 border-emerald-200' : isPriv ? 'bg-indigo-50 border-indigo-200' : 'bg-amber-50 border-amber-200'}`}>
-                  <span className="text-2xl">{isDrop ? '📚' : isPriv ? '🏥' : '⚖️'}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className={`font-black text-sm ${isDrop ? 'text-emerald-800' : isPriv ? 'text-indigo-800' : 'text-amber-800'}`}>
-                        Recommendation: {analysis.rec}
-                      </p>
-                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${isDrop ? 'bg-emerald-200 text-emerald-800' : isPriv ? 'bg-indigo-200 text-indigo-800' : 'bg-amber-200 text-amber-800'}`}>
-                        {analysis.recLevel}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Score {analysis.sc} · {category.toUpperCase()} · {attempt} attempt ·
-                      Budget ₹{budget}L/yr ·
-                      Gap to govt cutoff: {analysis.gapToGovt > 0 ? `${analysis.gapToGovt} marks below` : `${Math.abs(analysis.gapToGovt)} marks above`}
-                    </p>
+            {/* Recommendation Top Card */}
+            <div className="bg-white rounded-2xl p-8 border border-slate-100 shadow-[0_4px_20px_rgb(0,0,0,0.03)] flex flex-col md:flex-row items-center gap-10">
+               <div className="shrink-0 relative flex items-center justify-center w-36 h-36 rounded-full border-[12px] border-[#EEF2FF]">
+                  <svg className="absolute inset-0 w-full h-full transform -rotate-90">
+                    <circle cx="60" cy="60" r="60" fill="transparent" stroke="#2563eb" strokeWidth="12" strokeDasharray="376.99" strokeDashoffset={376.99 - (376.99 * (analysis.rec === 'Drop Year' ? 0.35 : 0.75))} className="translate-x-[12px] translate-y-[12px]" />
+                  </svg>
+                  <div className="text-center z-10 bg-white w-full h-full rounded-full flex flex-col items-center justify-center">
+                    <div className="text-3xl font-black text-slate-900 leading-none mb-1">{analysis.rec === 'Drop Year' ? '35%' : '75%'}</div>
+                    <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Viability</div>
                   </div>
-                </div>
-              );
-            })()}
-
-            {/* ── Side-by-side path cards ── */}
-            <div className="grid grid-cols-2 gap-4">
-
-              {/* PATH A: Drop Year */}
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="px-5 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white">
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-60 mb-0.5">Path A</p>
-                  <p className="font-black text-base leading-tight">Take a Drop Year</p>
-                  <p className="text-[11px] text-emerald-100 mt-0.5">Re-attempt NEET · Target government seat</p>
-                </div>
-                <div className="p-4 space-y-4">
-
-                  {/* Score projections */}
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Score Improvement — {attempt} Attempt</p>
-                    <div className="bg-emerald-50 rounded-lg p-3 space-y-2">
-                      {[
-                        ['Conservative', analysis.projMin, analysis.imp.min, false],
-                        ['Expected',     analysis.projAvg, analysis.imp.avg, true],
-                        ['Best Case',    analysis.projMax, analysis.imp.max, false],
-                      ].map(([label, proj, delta, highlight]) => (
-                        <div key={label} className="flex items-center justify-between">
-                          <span className={`text-[12px] ${highlight ? 'font-black text-emerald-800' : 'text-slate-500'}`}>
-                            {label} {delta >= 0 ? '+' : ''}{delta} marks
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            <span className={`text-[13px] font-black ${highlight ? 'text-emerald-700' : 'text-slate-600'}`}>{proj}</span>
-                            {proj >= analysis.govtCutoff && (
-                              <span className="text-[10px] bg-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded font-bold">✓ Govt</span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-1.5 italic leading-relaxed">{analysis.imp.note}</p>
-                  </div>
-
-                  {/* Govt probability */}
-                  <div className="flex items-center justify-between py-2.5 border-y border-slate-100">
-                    <div>
-                      <p className="text-[12px] font-semibold text-slate-700">Govt College Probability</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">MH {category.toUpperCase()} cutoff: {analysis.govtCutoff}</p>
-                    </div>
-                    <span className={`text-[11px] font-black px-2.5 py-1 rounded-lg ${analysis.govtProb.cls}`}>
-                      {analysis.govtProb.label}
-                    </span>
-                  </div>
-
-                  {/* Gap year cost */}
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Gap Year Cost Estimate</p>
-                    <div className="space-y-1.5">
-                      <Row label="Coaching + test series"     value="₹1.5L – ₹3L" />
-                      <Row label="Study materials / online"   value="₹20K – ₹50K" />
-                      <Row label="Living + miscellaneous"     value="₹1.5L – ₹3L" />
-                      <div className="flex items-center justify-between text-[12px] pt-1.5 border-t border-slate-100">
-                        <span className="font-bold text-slate-700">Total gap year cost</span>
-                        <span className="font-black text-emerald-700">₹3.5L – ₹6.5L</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* If govt college scenario */}
-                  <div className="bg-slate-50 rounded-lg p-3">
-                    <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider mb-2">✓ If You Secure a Govt Seat</p>
-                    <div className="space-y-1.5">
-                      <Row label="4.5yr tuition total"            value="₹1.5L – ₹3.5L" />
-                      <Row label="Education loan needed"          value="None (or minimal)" valueClass="text-emerald-600" />
-                      <Row label="Doctor career starts"           value={`~${analysis.dropCareerStart}`} valueClass="text-indigo-700" />
-                      <Row label="Financial break-even"           value={`~${analysis.dropBreakEven}`}  valueClass="text-emerald-700" />
-                    </div>
-                  </div>
-
-                  {/* Risk note */}
-                  <div className={`rounded-lg px-3 py-2.5 text-[11px] leading-relaxed ${attempt === '3rd+' ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-amber-50 text-amber-700'}`}>
-                    ⚠ Risk: If your score doesn't improve enough, you still end up in a private college — but one year later, with the same loan burden.
-                    {attempt === '3rd+' && ' Score gains after 3 attempts are statistically very low.'}
-                  </div>
-                </div>
-              </div>
-
-              {/* PATH B: Private MBBS Now */}
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="px-5 py-3.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white">
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] opacity-60 mb-0.5">Path B</p>
-                  <p className="font-black text-base leading-tight">Take Private MBBS Now</p>
-                  <p className="text-[11px] text-indigo-200 mt-0.5">
-                    {analysis.useTier ? `${analysis.useTier.label} · ${analysis.useTier.desc}` : 'Score needs to improve first'}
+               </div>
+               <div>
+                  <h2 className="text-3xl font-black text-slate-900 mb-4">{analysis.rec === 'Drop Year' ? 'Favorable for Drop Year' : 'Favorable for Private Admission'}</h2>
+                  <p className="text-slate-600 text-[15px] leading-relaxed">
+                    Based on your score of <strong className="text-slate-900">{analysis.sc}</strong> and budget, securing a {analysis.rec === 'Drop Year' ? 'government seat next year' : 'management quota seat'} is {analysis.rec === 'Drop Year' ? 'your primary strategic path' : 'highly probable'}. A drop year is statistically {analysis.attempt === '3rd+' ? 'highly risky for achieving an AIIMS tier upgrade.' : analysis.rec === 'Drop Year' ? 'your best option to avoid severe debt.' : 'risky for achieving an AIIMS tier upgrade.'}
                   </p>
-                </div>
-
-                {analysis.useTier ? (
-                  <div className="p-4 space-y-4">
-
-                    {/* Accessible tiers */}
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">College Tiers You Qualify For (Score: {analysis.sc})</p>
-                      <div className="space-y-1">
-                        {TIERS.map(t => {
-                          const ok = analysis.accessible.some(a => a.id === t.id);
-                          const isTgt = t.id === targetTier;
-                          return (
-                            <div key={t.id}
-                              className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[12px] ${isTgt && ok ? 'bg-indigo-50' : ''}`}>
-                              <span className={ok ? (isTgt ? 'font-bold text-indigo-700' : 'text-slate-600') : 'text-slate-300'}>{t.label}</span>
-                              <span className={ok ? (isTgt ? 'text-indigo-600 font-black text-[10px]' : 'text-emerald-600 font-bold text-[11px]') : 'text-slate-300 text-[11px]'}>
-                                {ok ? (isTgt ? '← Target ✓' : '✓') : '✗'}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {!analysis.canHitTarget && (
-                        <p className="text-[10px] text-amber-600 mt-1.5 leading-relaxed">
-                          Your target tier requires a higher score. Showing costs for your best accessible tier ({analysis.useTier.label}).
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Fee breakdown */}
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">4.5-Year Fee Breakdown</p>
-                      <div className="space-y-1.5">
-                        <Row label="Annual fee range"
-                          value={`${fmtL(analysis.useTier.feeMin)} – ${fmtL(analysis.useTier.feeMax)}`} />
-                        <Row label="Total 4.5-year fees"
-                          value={`${fmtL(analysis.feeMin)} – ${fmtL(analysis.feeMax)}`}
-                          valueClass="text-indigo-700" />
-                        <Row label={`Your budget covers (₹${budget}L/yr × 4.5yr)`}
-                          value={fmtL(analysis.budgetTotal)} />
-                        <Row label="Education loan needed"
-                          value={analysis.loanMax > 0 ? `${fmtL(analysis.loanMin)} – ${fmtL(analysis.loanMax)}` : 'None — budget covers it!'}
-                          valueClass={analysis.loanMax > 0 ? 'text-rose-600' : 'text-emerald-600'} />
-                      </div>
-                    </div>
-
-                    {/* EMI calculations */}
-                    {analysis.loanMax > 0 && (
-                      <div className="bg-rose-50 border border-rose-100 rounded-lg p-3">
-                        <p className="text-[10px] font-bold text-rose-700 uppercase tracking-wider mb-2">Education Loan @ {LOAN_RATE}% — 10 Years</p>
-                        <div className="space-y-1.5">
-                          <Row label="Loan amount"
-                            value={`${fmtL(analysis.loanMin)} – ${fmtL(analysis.loanMax)}`} />
-                          <Row label="Monthly EMI"
-                            value={`${fmtEMI(analysis.emiMin)} – ${fmtEMI(analysis.emiMax)}`}
-                            valueClass="text-rose-700 font-black" />
-                          <Row label="Total repayment (10yr)"
-                            value={`${fmtL(analysis.repayMin)} – ${fmtL(analysis.repayMax)}`} />
-                          <Row label="Total interest paid"
-                            value={`${fmtL(analysis.intMin)} – ${fmtL(analysis.intMax)}`}
-                            valueClass="text-amber-700" />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Career timeline */}
-                    <div className="bg-slate-50 rounded-lg p-3">
-                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Career Timeline from Now</p>
-                      <div className="space-y-1.5">
-                        <Row label="MBBS complete (4.5yr)"         value={`~${analysis.currentYear + 5}`} />
-                        <Row label="Internship done · Career starts" value={`~${analysis.careerStart}`} valueClass="text-indigo-700" />
-                        <Row label="Loan fully repaid (10yr EMI)"
-                          value={analysis.loanMax > 0 ? `~${analysis.loanRepaid}` : 'No loan — debt-free career'}
-                          valueClass={analysis.loanMax > 0 ? 'text-rose-600' : 'text-emerald-600'} />
-                        <Row label="Financial break-even"
-                          value={`~${analysis.loanRepaid}`}
-                          valueClass="text-emerald-700" />
-                      </div>
-                    </div>
-
-                    {budget * 100000 < (analysis.useTier?.feeMin ?? 0) && (
-                      <div className="text-[11px] text-rose-700 bg-rose-50 rounded-lg px-3 py-2.5 leading-relaxed border border-rose-100">
-                        ⚠ Your budget (₹{budget}L/yr) is below the minimum annual fee (₹{(analysis.useTier.feeMin / 100000).toFixed(0)}L/yr) for this tier. An education loan will be needed for the shortfall.
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="p-8 text-center">
-                    <p className="text-4xl mb-3">📊</p>
-                    <p className="text-sm font-bold text-slate-700 mb-1">Score Below Qualifying Range</p>
-                    <p className="text-[12px] text-slate-400 leading-relaxed max-w-xs mx-auto">
-                      At {analysis.sc} marks, you currently don't qualify for any state quota private MBBS seats. A drop year is your primary path forward.
-                    </p>
-                  </div>
-                )}
-              </div>
+               </div>
             </div>
 
-            {/* ── Comparison summary table ── */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
-                <h3 className="text-[11px] font-black text-slate-600 uppercase tracking-widest">Side-by-Side Comparison Summary</h3>
-              </div>
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wide w-1/3">Factor</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-bold text-emerald-600 uppercase tracking-wide">📚 Path A — Drop Year</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-bold text-indigo-600 uppercase tracking-wide">🏥 Path B — Private Now</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50 text-[12px]">
-                  {[
-                    [
-                      'Total investment',
-                      '₹3.5L–₹6.5L (if govt seat)',
-                      analysis.useTier ? `${fmtL(analysis.repayMin)}–${fmtL(analysis.repayMax)} (inc. interest)` : 'N/A',
-                    ],
-                    [
-                      'Monthly EMI burden',
-                      'None (govt seat = no loan)',
-                      analysis.loanMax > 0 ? `${fmtEMI(analysis.emiMin)}–${fmtEMI(analysis.emiMax)} for 10 yrs` : 'No loan needed',
-                    ],
-                    [
-                      'Career starts',
-                      `~${analysis.dropCareerStart} (1 yr delay)`,
-                      `~${analysis.careerStart} (earlier)`,
-                    ],
-                    [
-                      'Financial break-even',
-                      `~${analysis.dropBreakEven}`,
-                      analysis.useTier ? `~${analysis.loanRepaid}` : '—',
-                    ],
-                    [
-                      'Risk level',
-                      attempt === '3rd+' ? 'Very High' : analysis.gapToGovt > 60 ? 'High (large gap)' : 'Moderate',
-                      'Low — guaranteed MBBS seat',
-                    ],
-                    [
-                      'Certainty',
-                      'None — depends on next NEET',
-                      'Confirmed seat this year',
-                    ],
-                  ].map(([factor, pathA, pathB]) => (
-                    <tr key={factor} className="hover:bg-slate-50">
-                      <td className="px-5 py-3 text-slate-500 font-medium">{factor}</td>
-                      <td className="px-5 py-3 text-slate-700 font-semibold">{pathA}</td>
-                      <td className="px-5 py-3 text-slate-700 font-semibold">{pathB}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* Side-by-side scenarios */}
+            <div className="grid lg:grid-cols-2 gap-8">
+               
+               {/* Scenario A */}
+               <div className="bg-[#EEF2FF] rounded-2xl p-8 border border-[#E0E7FF] relative overflow-hidden shadow-sm">
+                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/50 -mr-16 -mt-16 rotate-45 rounded-[2rem]"></div>
+                 <h3 className="text-xl font-black text-indigo-950 mb-8 relative z-10">Scenario A: Enroll Now</h3>
+                 <div className="space-y-5 relative z-10">
+                   <div className="flex justify-between items-center text-sm border-b border-indigo-100/60 pb-4">
+                     <span className="text-indigo-900/70 font-bold">Time to Practice</span>
+                     <span className="font-black text-indigo-950">5.5 Years</span>
+                   </div>
+                   <div className="flex justify-between items-center text-sm border-b border-indigo-100/60 pb-4">
+                     <span className="text-indigo-900/70 font-bold">Est. Total Cost</span>
+                     <span className="font-black text-indigo-950">{fmtL(analysis.feeMin)} - {fmtL(analysis.feeMax)}</span>
+                   </div>
+                   <div className="pt-2 pb-2">
+                     <div className="flex h-3 w-full rounded-full overflow-hidden mb-3">
+                       <div className="bg-blue-600 w-[60%]"></div>
+                       <div className="bg-indigo-400 w-[30%] border-l-2 border-white/20"></div>
+                       <div className="bg-amber-600 w-[10%] border-l-2 border-white/20"></div>
+                     </div>
+                     <div className="flex gap-5 text-[11px] font-bold text-indigo-900/70">
+                       <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span> Tuition</span>
+                       <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-indigo-400"></span> Hostel</span>
+                       <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-600"></span> Hidden</span>
+                     </div>
+                   </div>
+                   <div className="flex justify-between items-center text-sm border-b border-indigo-100/60 pb-4 pt-2">
+                     <span className="text-indigo-900/70 font-bold">Education Loan EMI</span>
+                     <span className="font-black text-blue-600">{analysis.loanMax > 0 ? `${fmtEMI(analysis.emiMin)} /mo` : 'None'}</span>
+                   </div>
+                   <div className="flex justify-between items-center text-sm pb-1 pt-1">
+                     <span className="text-indigo-900/70 font-bold">Accessible Tier</span>
+                     <span className="font-black text-indigo-950">{analysis.useTier ? analysis.useTier.label : 'None'}</span>
+                   </div>
+                 </div>
+               </div>
+
+               {/* Scenario B */}
+               <div className="bg-white rounded-2xl p-8 border border-slate-100 shadow-sm">
+                 <h3 className="text-xl font-black text-slate-900 mb-8">Scenario B: Drop Year</h3>
+                 <div className="space-y-6">
+                   <div className="flex justify-between items-center text-[15px] border-b border-slate-100 pb-5">
+                     <span className="text-slate-500 font-bold">Target Score Req.</span>
+                     <span className="font-black text-rose-600">{analysis.govtCutoff}+ <span className="text-sm font-bold opacity-70">({analysis.gapToGovt > 0 ? '+' : ''}{analysis.gapToGovt} pts)</span></span>
+                   </div>
+                   <div className="flex justify-between items-center text-[15px] border-b border-slate-100 pb-5">
+                     <span className="text-slate-500 font-bold">Historical Success</span>
+                     <span className="font-black text-slate-700">{Math.min(100, Math.round(analysis.imp.avg * 1.5))}% <span className="text-sm font-normal text-slate-400 font-bold">(Drop 1 to Govt)</span></span>
+                   </div>
+                   <div className="flex justify-between items-center text-[15px] pb-2 border-b border-slate-100 pb-5">
+                     <span className="text-slate-500 font-bold">Opportunity Cost</span>
+                     <span className="font-black text-slate-900">1 Year Income</span>
+                   </div>
+                   <div className="flex justify-between items-center text-[15px] pb-2">
+                     <span className="text-slate-500 font-bold">Career Starts</span>
+                     <span className="font-black text-slate-900">~{analysis.dropCareerStart}</span>
+                   </div>
+                 </div>
+               </div>
+
             </div>
 
-            {/* CTA */}
-            <div className="bg-gradient-to-r from-indigo-600 to-violet-600 rounded-xl p-5 text-white text-center">
-              <p className="font-bold text-sm mb-1">Every student's situation is unique.</p>
-              <p className="text-[12px] text-indigo-100 mb-3 max-w-md mx-auto leading-relaxed">
-                Our counsellors factor in your college preferences, PG aspirations, family finances, and career goals — giving you a complete picture beyond this financial snapshot.
-              </p>
-              <a href="https://eduniaa.com/book" target="_blank" rel="noopener noreferrer"
-                className="inline-block bg-white text-indigo-700 font-bold text-xs px-6 py-2 rounded-lg hover:bg-indigo-50 transition-colors">
-                Book a Free Eduniaa Counselling Session →
-              </a>
+            {/* RISK / REWARD Chart */}
+            <div className="bg-white rounded-2xl p-8 border border-slate-100 shadow-sm mt-8">
+               <h3 className="text-[12px] font-black text-slate-900 uppercase tracking-widest mb-10">RISK/REWARD: 5-YEAR FINANCIAL TRAJECTORY</h3>
+               
+               <div className="space-y-8 mb-10">
+                 <div className="relative">
+                   <div className="flex justify-between text-[11px] font-bold text-slate-400 mb-2.5">
+                     <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100">Enroll Now</span>
+                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-300"></span> Lifetime Earnings</span>
+                   </div>
+                   <div className="h-16 w-full bg-blue-50/50 rounded-md relative border border-blue-100 overflow-hidden">
+                     <div className="absolute inset-y-0 left-0 bg-[#0047b3] rounded-md" style={{width: '75%'}}></div>
+                     <span className="absolute left-5 top-1/2 -translate-y-1/2 text-white font-black text-sm">{fmtL(analysis.feeMax)}</span>
+                   </div>
+                 </div>
+                 
+                 <div className="relative">
+                   <div className="flex justify-between text-[11px] font-bold text-slate-400 mb-2.5">
+                     <span className="bg-rose-50 text-rose-700 px-2 py-0.5 rounded border border-rose-100">Drop Year</span>
+                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-rose-200"></span> Net Wealth (5yr)</span>
+                   </div>
+                   <div className="h-16 w-full bg-rose-50/50 rounded-md relative border border-rose-100 overflow-hidden">
+                     <div className="absolute inset-y-0 left-0 bg-[#b91c1c] rounded-md" style={{width: '90%'}}></div>
+                     <span className="absolute left-5 top-1/2 -translate-y-1/2 text-white font-black text-sm">₹3.5L - ₹6.5L</span>
+                   </div>
+                 </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-6">
+                 <div className="border border-blue-100 bg-blue-50/30 rounded-xl p-6">
+                   <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Break-Even</div>
+                   <div className="text-3xl font-black text-blue-600">{Math.max(0, analysis.dropBreakEven - analysis.currentYear)} Years</div>
+                 </div>
+                 <div className="border border-rose-100 bg-rose-50/30 rounded-xl p-6">
+                   <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Opportunity Cost</div>
+                   <div className="text-3xl font-black text-rose-600">₹45L - ₹60L</div>
+                 </div>
+               </div>
             </div>
+
+            <div className="flex justify-end gap-4 pt-6">
+               <button className="px-6 py-3.5 bg-white border border-slate-200 text-slate-700 font-bold text-sm rounded-xl hover:bg-slate-50 transition-colors shadow-sm">Save Analysis</button>
+               <button className="px-6 py-3.5 bg-blue-700 text-white font-bold text-sm rounded-xl hover:bg-blue-800 transition-colors flex items-center gap-2 shadow-sm">View Detailed Breakdown &rarr;</button>
+            </div>
+
           </div>
         )}
       </div>

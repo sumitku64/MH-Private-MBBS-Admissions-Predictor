@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'crypto';
 import { WebSocket } from 'ws';
 if (!globalThis.WebSocket) globalThis.WebSocket = WebSocket; // Node 20 polyfill for Supabase realtime
 import path from 'path';
@@ -8,6 +9,10 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import OpenAI from 'openai';
 import { createClient } from '@supabase/supabase-js';
+
+// Canonical prediction algorithm — shared with the React frontend so both
+// always produce identical results from identical inputs.
+import { calcFee, calcProb } from './src/lib/predictionEngine.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,11 +34,21 @@ app.use(cors({
     }
   },
   methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'X-Admin-Password'],
+  allowedHeaders: ['Content-Type', 'X-Admin-Token'],
   credentials: true,
 }));
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('UNHANDLED REJECTION:', reason);
+});
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use((err, req, res, next) => {
+  console.error('Express Error Middleware caught:', err);
+  next(err);
+});
 
 // ── Clients ────────────────────────────────────────────────────────────────────
 const groq = new OpenAI({
@@ -75,28 +90,27 @@ loadCollegeData().catch(err => console.error('[college-data] load failed:', err.
 
 // ── Rate limiters ──────────────────────────────────────────────────────────────
 const chatLimiter = rateLimit({
-  windowMs: 60_000, max: 10,
-  standardHeaders: true, legacyHeaders: false,
-  message: { error: 'Too many requests — please wait a minute and try again.' },
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200, // limit each IP to 200 requests per windowMs
+  message: { error: 'Too many requests, please try again later.' },
 });
 
 // ── Dhruv system prompt ────────────────────────────────────────────────────────
-const DHRUV_SYSTEM = `You are Dhruv, Eduniaa Global's senior MBBS counsellor with 10+ years experience. Knowledge domains: NEET scoring, MCC AIQ counselling, state quota rules, drop year strategy. Tone: Warm, direct, jargon-free; uses Indian context naturally (lakh, MCC, DMER, NMC). Always end with one concrete next step and offer an Eduniaa booking.
+const DHRUV_SYSTEM = `You are Dhruv, Eduniaa Global's senior MBBS counsellor with 10+ years experience. Knowledge domains: NEET scoring, MCC AIQ counselling, state quota rules, drop year strategy. Tone: Warm, direct, jargon-free; uses Indian context naturally (lakh, MCC, DMER, NMC). IMPORTANT: YOU MUST RESPOND EXCLUSIVELY IN ENGLISH. Do not speak Hindi. Always end with one concrete next step and offer an Eduniaa booking.
 
-You have deep expertise in:
+CRITICAL DIRECTIVE: You must ONLY use the exact college data (cutoffs, fees, seats, colleges) provided below in the "DATABASE CONTEXT" section to answer questions about specific colleges, cutoffs, or fees. Do NOT use your general pre-trained knowledge for any specific data points. If the user asks about a college, cutoff, or fee that is not in the DATABASE CONTEXT, you must state that you do not have that data.
+
+You have expertise in:
 - Maharashtra private MBBS college admissions (all 23 private colleges)
-- NEET 2024/2025 cutoffs by college, category, and quota
-- Fee structures: Open, OBC, SEBC, VJNT, SC, ST, EWS, NRI categories
-- Female OBC/SEBC fee concession rules
+- Fee structures and Female OBC/SEBC fee concession rules
 - MH domicile eligibility (15-year residency or parent born in MH)
 - Quota breakdown: 85% State Quota, 15% AIQ, Management/NRI
 - Drop year vs. private MBBS decision analysis
 - MH CET Cell counselling process (cetcell.mahacet.org)
-- Document checklist for admissions
 
-Always be specific with numbers (marks, fees in lakhs, seat percentages). If you don't know a precise figure, give a realistic range based on historical data. Never refuse to help — guide students toward the best decision for their situation.
+Always be specific with numbers (marks, fees in lakhs, seat percentages) based ONLY on the provided context. Never refuse to help — guide students toward the best decision for their situation.
 
-When you use the web_search tool, synthesise the search results into your answer naturally. Cite the source briefly (e.g. "per MCC's latest notification"). If results are inconclusive, say so and give your best estimate from training data.`;
+When you use the web_search tool, synthesise the search results into your answer naturally. Cite the source briefly.`;
 
 // ── Web search tool — OpenAI/Groq format ─────────────────────────────────────
 const WEB_SEARCH_TOOL = {
@@ -134,99 +148,141 @@ async function performWebSearch(query) {
   }
 }
 
-// ── POST /api/chat ─────────────────────────────────────────────────────────────
-app.post('/api/chat', chatLimiter, async (req, res) => {
-  const { messages } = req.body;
-
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: 'messages array is required' });
-  }
-
-  const sanitized = messages
-    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-    .map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
-
-  if (sanitized.length === 0) {
-    return res.status(400).json({ error: 'No valid messages' });
-  }
-
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  try {
-    const allMessages = [{ role: 'system', content: DHRUV_SYSTEM }, ...sanitized];
-    const hasBrave = !!process.env.BRAVE_SEARCH_API_KEY;
-
-    if (hasBrave) {
-      // First pass — detect if web search is needed
-      const firstMsg = await groq.chat.completions.create({
-        model:       'llama-3.3-70b-versatile',
-        max_tokens:  256,
-        messages:    allMessages,
-        tools:       [WEB_SEARCH_TOOL],
-        tool_choice: 'auto',
-        stream:      false,
-      });
-
-      const choice = firstMsg.choices[0];
-
-      if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
-        const toolCall = choice.message.tool_calls[0];
-        const { query } = JSON.parse(toolCall.function.arguments);
-
-        res.write(`data: ${JSON.stringify({ type: 'searching', query })}\n\n`);
-        const searchResults = await performWebSearch(query);
-
-        // Second pass — stream final answer with search results injected
-        const stream = await groq.chat.completions.create({
-          model:     'llama-3.3-70b-versatile',
-          max_tokens: 1024,
-          messages: [
-            ...allMessages,
-            { role: 'assistant', content: null, tool_calls: choice.message.tool_calls },
-            { role: 'tool', tool_call_id: toolCall.id, content: searchResults },
-          ],
-          stream: true,
-        });
-
-        for await (const chunk of stream) {
-          const text = chunk.choices[0]?.delta?.content;
-          if (text) res.write(`data: ${JSON.stringify({ type: 'delta', text })}\n\n`);
-        }
-      } else {
-        // No search needed — stream the first response directly
-        const stream = await groq.chat.completions.create({
-          model:      'llama-3.3-70b-versatile',
-          max_tokens: 1024,
-          messages:   allMessages,
-          stream:     true,
-        });
-
-        for await (const chunk of stream) {
-          const text = chunk.choices[0]?.delta?.content;
-          if (text) res.write(`data: ${JSON.stringify({ type: 'delta', text })}\n\n`);
-        }
+// ── DB Query tool ─────────────────────────────────────────────────────────────
+const DB_QUERY_TOOL = {
+  type: 'function',
+  function: {
+    name: 'query_college_database',
+    description: 'Query the official MH private medical college database for fees, cutoffs, and seat matrix. ALWAYS use this tool whenever the user asks about specific colleges, cutoffs, budgets, or fees instead of trying to guess.',
+    parameters: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', description: 'The caste category (e.g., open, obc, sc, nri).' },
+        max_fee: { type: 'number', description: 'Maximum annual fee in INR (e.g. 1000000 for 10 lakhs).' },
+        college_code: { type: 'string', description: 'Specific college code if the user is asking about a specific college.' }
       }
-    } else {
-      // No Brave key — skip tool detection, stream directly
+    }
+  }
+};
+
+function performDbQuery({ category, max_fee, college_code }) {
+  let results = collegeData;
+  if (college_code) {
+    const code = college_code.toUpperCase();
+    results = results.filter(c => c.code.includes(code) || c.name.toUpperCase().includes(code));
+  }
+  if (max_fee && category) {
+    // Basic filter logic: if fee for category is less than max_fee
+    results = results.filter(c => {
+      const feeStr = c.fees[category] || c.fees['open'];
+      if (!feeStr) return false;
+      const feeNum = parseInt(String(feeStr).replace(/,/g, ''), 10);
+      return !isNaN(feeNum) && feeNum <= max_fee;
+    });
+  }
+
+  // To prevent token limits, only return top 10 matches if there are many, and only 2024 cutoffs
+  return JSON.stringify(results.slice(0, 10).map(c => ({
+    code: c.code,
+    name: c.name,
+    fees: c.fees,
+    cutoffs24: c.cutoffs?.['2024']
+  })));
+}
+
+// ── POST /api/chat ─────────────────────────────────────────────────────────────
+app.post('/api/chat', async (req, res) => {
+  try {
+    console.log('HIT API CHAT', req.body ? 'has body' : 'no body');
+    const { messages, profile } = req.body || {};
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'messages array is required' });
+    }
+
+    const sanitized = messages
+      .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+      .map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
+
+    if (sanitized.length === 0) {
+      return res.status(400).json({ error: 'No valid messages' });
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    let fullSystemPrompt = DHRUV_SYSTEM;
+    
+    if (profile) {
+      fullSystemPrompt += `\n\n--- CURRENT USER PROFILE ---\n`;
+      fullSystemPrompt += `Name: ${profile.userName}\n`;
+      fullSystemPrompt += `Gender: ${profile.gender}\n`;
+      if (profile.userScore) fullSystemPrompt += `NEET Score: ${profile.userScore}\n`;
+      if (profile.categoryRank) fullSystemPrompt += `Category Rank: ${profile.categoryRank}\n`;
+      if (profile.allIndiaRank) fullSystemPrompt += `All India Rank: ${profile.allIndiaRank}\n`;
+      if (profile.annualBudget) fullSystemPrompt += `Annual Budget: ${profile.annualBudget} INR\n`;
+      if (profile.preferredRegions?.length) fullSystemPrompt += `Preferred Regions: ${profile.preferredRegions.join(', ')}\n`;
+      fullSystemPrompt += `--- END USER PROFILE ---\n`;
+      fullSystemPrompt += `Keep this user's details in mind. You do not need to ask them for this information unless it's missing.\n`;
+    }
+    
+    const allMessages = [{ role: 'system', content: fullSystemPrompt }, ...sanitized];
+    const tools = [DB_QUERY_TOOL];
+    if (process.env.BRAVE_SEARCH_API_KEY) tools.push(WEB_SEARCH_TOOL);
+
+    // First pass — detect if any tool is needed
+    console.log('Sending first pass to Groq...');
+    const firstMsg = await groq.chat.completions.create({
+      model:       'openai/gpt-oss-120b',
+      max_tokens:  256,
+      messages:    allMessages,
+      tools:       tools,
+      tool_choice: 'auto',
+      stream:      false,
+    });
+    console.log('Received first pass from Groq', firstMsg.choices[0].finish_reason);
+
+    const choice = firstMsg.choices[0];
+
+    if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
+      const toolCall = choice.message.tool_calls[0];
+      const toolArgs = JSON.parse(toolCall.function.arguments);
+      
+      let toolResult = '';
+      if (toolCall.function.name === 'web_search') {
+        res.write(`data: ${JSON.stringify({ type: 'searching', query: toolArgs.query })}\n\n`);
+        toolResult = await performWebSearch(toolArgs.query);
+      } else if (toolCall.function.name === 'query_college_database') {
+        res.write(`data: ${JSON.stringify({ type: 'searching', query: 'Searching college database...' })}\n\n`);
+        toolResult = performDbQuery(toolArgs);
+      }
+
+      // Second pass — stream final answer with tool results injected
       const stream = await groq.chat.completions.create({
-        model:      'llama-3.3-70b-versatile',
+        model:     'openai/gpt-oss-120b',
         max_tokens: 1024,
-        messages:   allMessages,
-        stream:     true,
+        messages: [
+          ...allMessages,
+          { role: 'assistant', content: null, tool_calls: choice.message.tool_calls },
+          { role: 'tool', tool_call_id: toolCall.id, content: toolResult },
+        ],
+        stream: true,
       });
 
       for await (const chunk of stream) {
         const text = chunk.choices[0]?.delta?.content;
         if (text) res.write(`data: ${JSON.stringify({ type: 'delta', text })}\n\n`);
       }
+    } else {
+      res.write(`data: ${JSON.stringify({ type: 'delta', text: choice.message.content || '' })}\n\n`);
     }
 
     res.write('data: [DONE]\n\n');
     res.end();
   } catch (err) {
-    console.error('Groq API error:', err.message);
+    console.error('Groq API error:', err.message, err.stack);
     if (!res.headersSent) {
       res.status(500).json({ error: 'AI service error' });
     } else {
@@ -281,21 +337,9 @@ app.post('/api/alerts', (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Shared calculation helpers (used by REST API endpoints below) ──────────────
-function _calcFee(fees, category, gender) {
-  if (category === 'sc' || category === 'st') return fees.sc_st;
-  if (category === 'vjnt')                    return fees.vjnt_sbc;
-  if ((category === 'obc' || category === 'sebc') && gender === 'female') return fees.obc_ebc_sebc_female;
-  if (category === 'obc' || category === 'sebc') return fees.obc_ebc_sebc_male;
-  return fees.open;
-}
-
-function _calcProb(score, cutoff) {
-  if (!cutoff) return 'low';
-  if (score >= cutoff)                      return 'high';
-  if (score >= Math.round(cutoff * 0.92))  return 'borderline';
-  return 'low';
-}
+// _calcFee and _calcProb have been removed.
+// Fee and probability calculations are now handled exclusively by the shared
+// module imported above (./src/lib/predictionEngine.js).
 
 function _calcDomicileStatus(birthState, cls10, cls12, domicileCert) {
   if (domicileCert === 'Maharashtra')                         return 'ELIGIBLE';
@@ -323,9 +367,13 @@ app.post('/api/predict/colleges', (req, res) => {
   const colleges = collegeData
     .map(c => {
       const cutoff       = c.cutoffs[year]?.[category] ?? null;
-      const fee          = _calcFee(c.fees, category, gender);
-      const prob         = _calcProb(score, cutoff);
-      const withinBudget = budgetCap != null ? (fee != null && fee <= budgetCap) : true;
+      const fee          = calcFee(c.fees, category, gender);
+      // canAfford drives the management-quota upgrade paths in calcProb.
+      // When budgetCap is not provided by the caller we assume no budget
+      // constraint so canAfford is true (most permissive / optimistic view).
+      const canAfford    = budgetCap != null ? (fee != null && fee <= budgetCap) : true;
+      const withinBudget = canAfford; // re-use for the API response field
+      const { prob }     = calcProb(score, cutoff, { canAfford });
       return { code: c.code, name: c.name, seats: c.seats, cutoff, fee, prob, withinBudget };
     })
     .sort((a, b) => {
@@ -336,10 +384,10 @@ app.post('/api/predict/colleges', (req, res) => {
   res.json({
     score, category, gender, year,
     summary: {
-      total:      colleges.length,
-      high:       colleges.filter(c => c.prob === 'high').length,
-      borderline: colleges.filter(c => c.prob === 'borderline').length,
-      low:        colleges.filter(c => c.prob === 'low').length,
+      total:       colleges.length,
+      high:        colleges.filter(c => c.prob === 'high').length,
+      borderline:  colleges.filter(c => c.prob === 'borderline').length,
+      low:         colleges.filter(c => c.prob === 'low').length,
       withinBudget: budgetCap != null ? colleges.filter(c => c.withinBudget).length : null,
     },
     colleges,
@@ -401,14 +449,15 @@ app.post('/api/tools/choicefill', (req, res) => {
 
   const PROB_ORD = { high: 0, borderline: 1, low: 2 };
 
-  let list = collegeData.map(c => ({
-    code:   c.code,
-    name:   c.name,
-    seats:  c.seats,
-    cutoff: c.cutoffs[year]?.[category] ?? null,
-    fee:    _calcFee(c.fees, category, gender),
-    prob:   _calcProb(score, c.cutoffs[year]?.[category] ?? null),
-  }));
+  // No budget context is available in this endpoint, so canAfford defaults to
+  // false inside calcProb — the conservative path that matches the prior
+  // _calcProb behaviour for callers who do not supply a budget.
+  let list = collegeData.map(c => {
+    const cutoff      = c.cutoffs[year]?.[category] ?? null;
+    const fee         = calcFee(c.fees, category, gender);
+    const { prob }    = calcProb(score, cutoff);
+    return { code: c.code, name: c.name, seats: c.seats, cutoff, fee, prob };
+  });
 
   if (sortBy === 'fees_asc') list.sort((a, b) => (a.fee ?? Infinity) - (b.fee ?? Infinity));
   else                        list.sort((a, b) => PROB_ORD[a.prob] - PROB_ORD[b.prob] || (b.cutoff ?? 0) - (a.cutoff ?? 0));
@@ -436,7 +485,7 @@ async function verifyStudent(phone, pin) {
 
 // POST /api/auth/register
 app.post('/api/auth/register', async (req, res) => {
-  const { name, phone, neet_score, category, gender } = req.body ?? {};
+  const { name, phone, neet_score, category, gender, annualBudget, domicileState, education } = req.body ?? {};
   const digits = (phone ?? '').replace(/\D/g, '');
   if (!name?.trim() || digits.length !== 10) {
     return res.status(400).json({ error: 'name and valid 10-digit phone are required.' });
@@ -454,7 +503,17 @@ app.post('/api/auth/register', async (req, res) => {
   const pin = genPin();
   const { data: student, error } = await adminSupabase
     .from('students')
-    .insert({ name: name.trim(), phone: digits, neet_score: neet_score ?? null, category: category ?? 'open', gender: gender ?? 'any', pin })
+    .insert({ 
+      name: name.trim(), 
+      phone: digits, 
+      neet_score: neet_score ?? null, 
+      category: category ?? 'open', 
+      gender: gender ?? 'any', 
+      annual_budget: annualBudget ?? null,
+      domicile_state: domicileState ?? null,
+      educational_details: education ?? null,
+      pin 
+    })
     .select()
     .single();
 
@@ -467,7 +526,11 @@ app.post('/api/auth/register', async (req, res) => {
     });
   } catch (err) {}
 
-  res.json({ ok: true, pin, student: { name: student.name, phone: student.phone, neet_score: student.neet_score, category: student.category, gender: student.gender } });
+  res.json({ ok: true, pin, student: { 
+    name: student.name, phone: student.phone, neet_score: student.neet_score, category: student.category, gender: student.gender,
+    annual_budget: student.annual_budget, domicile_state: student.domicile_state, educational_details: student.educational_details,
+    dob: null, allIndiaRank: null, categoryRank: null, preferredRegions: [], needsHostel: false
+  } });
 });
 
 // POST /api/auth/login
@@ -496,10 +559,59 @@ app.post('/api/auth/login', async (req, res) => {
 
   res.json({
     ok: true,
-    student: { name: student.name, phone: student.phone, neet_score: student.neet_score, category: student.category, gender: student.gender },
+    student: { 
+      name: student.name, phone: student.phone, neet_score: student.neet_score, category: student.category, gender: student.gender,
+      annual_budget: student.annual_budget, domicile_state: student.domicile_state, educational_details: student.educational_details,
+      dob: student.dob, allIndiaRank: student.all_india_rank, categoryRank: student.category_rank,
+      preferredRegions: student.preferred_regions, needsHostel: student.needs_hostel,
+      fatherName: student.father_name, altPhone: student.alt_phone,
+      preferredInstituteType: student.preferred_institute_type, reservationSubcategory: student.reservation_subcategory
+    },
     shortlist: shortlist ?? [],
     chat: (chat ?? []).map(m => ({ role: m.role, content: m.content })),
   });
+});
+
+// POST /api/student/update — update student profile fields
+app.post('/api/student/update', async (req, res) => {
+  const { phone, pin, profile } = req.body ?? {};
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (!adminSupabase) return res.status(503).json({ error: 'Database not configured.' });
+
+  const student = await verifyStudent(digits, String(pin ?? ''));
+  if (!student) return res.status(401).json({ error: 'Invalid phone or PIN.' });
+
+  const { data, error } = await adminSupabase
+    .from('students')
+    .update({
+      name: profile.userName,
+      neet_score: profile.userScore,
+      gender: profile.gender,
+      category: profile.category,
+      domicile_state: profile.domicileState,
+      educational_details: profile.education,
+      dob: profile.dob || null,
+      all_india_rank: profile.allIndiaRank ? Number(profile.allIndiaRank) : null,
+      category_rank: profile.categoryRank ? Number(profile.categoryRank) : null,
+      annual_budget: profile.annualBudget ? Number(profile.annualBudget) : null,
+      preferred_regions: profile.preferredRegions ?? [],
+      needs_hostel: Boolean(profile.needsHostel),
+      father_name: profile.fatherName || null,
+      alt_phone: profile.altPhone || null,
+      preferred_institute_type: profile.preferredInstituteType ?? [],
+      reservation_subcategory: profile.reservationSubcategory ?? []
+    })
+    .eq('phone', digits)
+    .select()
+    .single();
+
+  if (error) {
+    // If column doesn't exist, log it so dev knows SQL wasn't run
+    console.error('Update Profile Error:', error.message);
+    return res.status(500).json({ error: 'Database error. Make sure schema is updated.' });
+  }
+
+  res.json({ ok: true, student: data });
 });
 
 // POST /api/student/shortlist  — save/replace full shortlist
@@ -557,24 +669,83 @@ app.post('/api/student/chat', async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Admin helpers ──────────────────────────────────────────────────────────────
+// ── Admin session token store ──────────────────────────────────────────────────
+// Tokens live in memory only — never written to disk or database.
+// Server restart automatically invalidates all sessions.
+const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const adminSessions  = new Map();            // token → { expiresAt }
 
-function requireAdmin(req, res) {
-  const pwd = req.headers['x-admin-password'] ?? req.body?.password;
-  if (!process.env.ADMIN_SECRET) {
-    res.status(503).json({ error: 'ADMIN_SECRET not set in environment.' });
-    return false;
-  }
-  if (pwd !== process.env.ADMIN_SECRET) {
-    res.status(401).json({ error: 'Unauthorized' });
+function generateToken() {
+  return crypto.randomBytes(32).toString('hex'); // 64-char hex, cryptographically random
+}
+
+function isValidToken(token) {
+  if (!token) return false;
+  const session = adminSessions.get(token);
+  if (!session) return false;
+  if (Date.now() > session.expiresAt) {
+    adminSessions.delete(token);
     return false;
   }
   return true;
 }
 
-app.post('/api/admin/verify', (req, res) => {
-  if (!requireAdmin(req, res)) return;
-  res.json({ ok: true });
+// Prune expired tokens every 30 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, session] of adminSessions.entries()) {
+    if (now > session.expiresAt) adminSessions.delete(token);
+  }
+}, 30 * 60_000).unref();
+
+// ── Admin auth guard ────────────────────────────────────────────────────────────
+function requireAdmin(req, res) {
+  const token = req.headers['x-admin-token'];
+  if (!isValidToken(token)) {
+    res.status(401).json({ error: 'Unauthorized — invalid or expired session. Please log in again.' });
+    return false;
+  }
+  return true;
+}
+
+// ── Login — password used ONCE here, never again ───────────────────────────────
+// Strict rate limit: 5 attempts per 15 minutes per IP
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60_000, max: 5,
+  standardHeaders: true, legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: 'Too many login attempts — please wait 15 minutes and try again.' },
+});
+
+app.post('/api/admin/verify', adminLoginLimiter, (req, res) => {
+  if (!process.env.ADMIN_SECRET) {
+    return res.status(503).json({ error: 'ADMIN_SECRET not configured on the server.' });
+  }
+
+  const provided = String(req.body?.password ?? '');
+  const expected = process.env.ADMIN_SECRET;
+
+  // Timing-safe comparison — prevents timing attacks that reveal password length
+  let match = false;
+  try {
+    const maxLen = Math.max(provided.length, expected.length);
+    const a = Buffer.alloc(maxLen, 0);
+    const b = Buffer.alloc(maxLen, 0);
+    a.write(provided);
+    b.write(expected);
+    match = crypto.timingSafeEqual(a, b) && provided.length === expected.length;
+  } catch (_) {
+    match = false;
+  }
+
+  if (!match) {
+    return res.status(401).json({ error: 'Invalid password.' });
+  }
+
+  const token = generateToken();
+  adminSessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS });
+  console.log(`[ADMIN] New session created — active sessions: ${adminSessions.size}`);
+  res.json({ ok: true, token, expiresIn: SESSION_TTL_MS });
 });
 
 app.get('/api/admin/data', async (req, res) => {
@@ -617,7 +788,7 @@ app.post('/api/admin/cutoffs', async (req, res) => {
 
   const { data: cols, error: colErr } = await adminSupabase
     .from('colleges')
-    .select('id, name')
+    .select('code, name')
     .eq('code', String(college_code))
     .limit(1);
 
@@ -628,14 +799,130 @@ app.post('/api/admin/cutoffs', async (req, res) => {
   const { error: upErr } = await adminSupabase
     .from('college_cutoffs')
     .upsert(
-      { college_id: cols[0].id, year: parseInt(year), category, cutoff_score: parseInt(cutoff_score) },
-      { onConflict: 'college_id,year,category' },
+      { college_code: cols[0].code, year: parseInt(year), category, cutoff_score: parseInt(cutoff_score) },
+      { onConflict: 'college_code,year,category' },
     );
 
   if (upErr) return res.status(500).json({ error: upErr.message });
 
   console.log(`[ADMIN] Upserted cutoff: ${cols[0].name} · ${year} · ${category.toUpperCase()} = ${cutoff_score}`);
   res.json({ ok: true, college: cols[0].name });
+});
+
+app.get('/api/admin/colleges', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  if (!adminSupabase) return res.status(503).json({ error: 'Supabase not configured.' });
+
+  const { data: colleges, error: colErr } = await adminSupabase
+    .from('colleges')
+    .select('code, name, seats')
+    .order('code');
+
+  const { data: fees, error: feeErr } = await adminSupabase
+    .from('college_fees')
+    .select('college_code, category, amount');
+
+  if (colErr || feeErr) return res.status(500).json({ error: (colErr || feeErr).message });
+  
+  res.json({ colleges: colleges ?? [], fees: fees ?? [] });
+});
+
+// ── Full college upsert (info + fees + cutoffs in one call) ──────────────────
+app.post('/api/admin/colleges', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  if (!adminSupabase) return res.status(503).json({ error: 'Supabase not configured.' });
+
+  const { code, name, seats, fees = [], cutoffs = [] } = req.body ?? {};
+  if (!code || !name) {
+    return res.status(400).json({ error: 'code and name are required.' });
+  }
+
+  // 1. Upsert college info
+  const { error: colErr } = await adminSupabase
+    .from('colleges')
+    .upsert({ code: String(code), name, seats: seats ? parseInt(seats) : null }, { onConflict: 'code' });
+  if (colErr) return res.status(500).json({ error: `College save failed: ${colErr.message}` });
+
+  // 2. Upsert fees (only rows with an amount provided)
+  const feeRows = fees
+    .filter(f => f.amount !== '' && f.amount != null)
+    .map(f => ({ college_code: String(code), category: f.category, amount: parseInt(f.amount) }));
+  if (feeRows.length > 0) {
+    const { error: feeErr } = await adminSupabase
+      .from('college_fees')
+      .upsert(feeRows, { onConflict: 'college_code,category' });
+    if (feeErr) return res.status(500).json({ error: `Fee save failed: ${feeErr.message}` });
+  }
+
+  // 3. Upsert cutoffs (only rows with a score provided)
+  const cutoffRows = cutoffs
+    .filter(c => c.cutoff_score !== '' && c.cutoff_score != null && c.year && c.category)
+    .map(c => ({ college_code: String(code), year: parseInt(c.year), category: c.category, cutoff_score: parseInt(c.cutoff_score) }));
+  if (cutoffRows.length > 0) {
+    const { error: cutErr } = await adminSupabase
+      .from('college_cutoffs')
+      .upsert(cutoffRows, { onConflict: 'college_code,year,category' });
+    if (cutErr) return res.status(500).json({ error: `Cutoff save failed: ${cutErr.message}` });
+  }
+
+  console.log(`[ADMIN] Saved college: ${code} - ${name} | fees: ${feeRows.length} | cutoffs: ${cutoffRows.length}`);
+  res.json({ ok: true, saved: { fees: feeRows.length, cutoffs: cutoffRows.length } });
+});
+
+// ── Individual fee upsert (kept for backward compat) ─────────────────────────
+app.post('/api/admin/fees', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  if (!adminSupabase) return res.status(503).json({ error: 'Supabase not configured.' });
+
+  const { college_code, category, amount } = req.body ?? {};
+  if (!college_code || !category || amount == null) {
+    return res.status(400).json({ error: 'college_code, category, and amount are required.' });
+  }
+
+  const { error: upErr } = await adminSupabase
+    .from('college_fees')
+    .upsert(
+      { college_code: String(college_code), category, amount: parseInt(amount) },
+      { onConflict: 'college_code,category' }
+    );
+
+  if (upErr) return res.status(500).json({ error: upErr.message });
+  res.json({ ok: true });
+});
+
+// ── Fetch single college with all fees + cutoffs (for Edit form pre-fill) ────
+app.get('/api/admin/college/:code', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  if (!adminSupabase) return res.status(503).json({ error: 'Supabase not configured.' });
+
+  const code = req.params.code;
+  const [colRes, feeRes, cutRes] = await Promise.all([
+    adminSupabase.from('colleges').select('code, name, seats').eq('code', code).single(),
+    adminSupabase.from('college_fees').select('category, amount').eq('college_code', code),
+    adminSupabase.from('college_cutoffs').select('year, category, cutoff_score').eq('college_code', code).order('year', { ascending: false }),
+  ]);
+
+  if (colRes.error || !colRes.data) return res.status(404).json({ error: `College "${code}" not found.` });
+  res.json({ college: colRes.data, fees: feeRes.data ?? [], cutoffs: cutRes.data ?? [] });
+});
+
+// ── Search colleges by name or code prefix ────────────────────────────────────
+app.get('/api/admin/search', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  if (!adminSupabase) return res.status(503).json({ error: 'Supabase not configured.' });
+
+  const q = (req.query.q ?? '').trim();
+  if (!q) return res.json([]);
+
+  const { data, error } = await adminSupabase
+    .from('colleges')
+    .select('code, name, seats')
+    .or(`name.ilike.%${q}%,code.ilike.%${q}%`)
+    .order('code')
+    .limit(10);
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data ?? []);
 });
 
 // ── Health check (used by Railway) ──────────────────────────────────────────
