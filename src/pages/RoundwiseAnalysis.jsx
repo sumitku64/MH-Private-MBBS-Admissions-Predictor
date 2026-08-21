@@ -9,21 +9,30 @@ export default function RoundwiseAnalysis() {
   const { collegeData } = useCollegeData();
   const { profile } = useUser();
   
-  // State
+  // State — auto-synced from profile on auth changes, then user-editable (What-If)
   const [userScore, setUserScore] = useState(() => profile?.userScore ? Number(profile.userScore) : 650);
   const [category, setCategory] = useState(() => profile?.category ?? 'open');
-  const [synced, setSynced] = useState(false);
   const [activeRound, setActiveRound] = useState('r2');
   const [currentPage, setCurrentPage] = useState(1);
   const rowsPerPage = 10;
 
+  // Identity-aware profile sync
+  const [hydratedUserId, setHydratedUserId] = useState(() => profile?.isRegistered ? profile.phone : null);
+
   useEffect(() => {
-    if (profile?.isRegistered && !synced) {
-      if (profile.userScore) setUserScore(Number(profile.userScore));
-      if (profile.category) setCategory(profile.category);
-      setSynced(true);
+    const currentAuth = profile?.isRegistered ? profile.phone : null;
+    
+    if (currentAuth !== hydratedUserId) {
+      if (currentAuth) {
+        setUserScore(profile.userScore ? Number(profile.userScore) : 650);
+        setCategory(profile.category ?? 'open');
+      } else {
+        setUserScore(650);
+        setCategory('open');
+      }
+      setHydratedUserId(currentAuth);
     }
-  }, [profile, synced]);
+  }, [profile?.isRegistered, profile?.phone, profile?.userScore, profile?.category, hydratedUserId]);
   
   // Calculate dynamic metrics across all colleges
   const analysisData = useMemo(() => {
@@ -128,7 +137,7 @@ export default function RoundwiseAnalysis() {
   const roundName = activeRound === 'r1' ? '1' : activeRound === 'r2' ? '2' : activeRound === 'r3' ? '3' : 'Mop-up';
 
   return (
-    <div className="max-w-[1400px] mx-auto px-6 py-8 min-h-screen bg-[#F8FAFC]">
+    <div className="max-w-[1400px] mx-auto px-4 md:px-6 py-8 min-h-screen bg-[#F8FAFC]">
       
       {/* Header section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 gap-6">
@@ -140,16 +149,16 @@ export default function RoundwiseAnalysis() {
         </div>
         
         {/* Round Selector Pill */}
-        <div className="flex bg-[#EEF2FF] p-1.5 rounded-full shadow-inner shrink-0">
-          <button onClick={() => { setActiveRound('r1'); setCurrentPage(1); }} className={`px-6 py-2.5 text-sm font-medium rounded-full transition-colors ${activeRound === 'r1' ? 'bg-[#1D4ED8] text-white shadow-sm' : 'text-[#4F46E5] hover:text-[#3730A3]'}`}>Round 1</button>
-          <button onClick={() => { setActiveRound('r2'); setCurrentPage(1); }} className={`px-6 py-2.5 text-sm font-medium rounded-full transition-colors ${activeRound === 'r2' ? 'bg-[#1D4ED8] text-white shadow-sm' : 'text-[#4F46E5] hover:text-[#3730A3]'}`}>Round 2</button>
-          <button onClick={() => { setActiveRound('r3'); setCurrentPage(1); }} className={`px-6 py-2.5 text-sm font-medium rounded-full transition-colors ${activeRound === 'r3' ? 'bg-[#1D4ED8] text-white shadow-sm' : 'text-[#4F46E5] hover:text-[#3730A3]'}`}>Round 3</button>
-          <button onClick={() => { setActiveRound('mopUp'); setCurrentPage(1); }} className={`px-6 py-2.5 text-sm font-medium rounded-full transition-colors ${activeRound === 'mopUp' ? 'bg-[#1D4ED8] text-white shadow-sm' : 'text-[#4F46E5] hover:text-[#3730A3]'}`}>Mop-up</button>
+        <div className="flex bg-[#EEF2FF] p-1.5 rounded-full shadow-inner shrink-0 max-w-full overflow-x-auto hide-scrollbar">
+          <button style={{whiteSpace: "nowrap"}} onClick={() => { setActiveRound('r1'); setCurrentPage(1); }} className={`px-4 md:px-6 py-2.5 text-sm font-medium rounded-full transition-colors ${activeRound === 'r1' ? 'bg-[#1D4ED8] text-white shadow-sm' : 'text-[#4F46E5] hover:text-[#3730A3]'}`}>Round 1</button>
+          <button style={{whiteSpace: "nowrap"}} onClick={() => { setActiveRound('r2'); setCurrentPage(1); }} className={`px-4 md:px-6 py-2.5 text-sm font-medium rounded-full transition-colors ${activeRound === 'r2' ? 'bg-[#1D4ED8] text-white shadow-sm' : 'text-[#4F46E5] hover:text-[#3730A3]'}`}>Round 2</button>
+          <button style={{whiteSpace: "nowrap"}} onClick={() => { setActiveRound('r3'); setCurrentPage(1); }} className={`px-4 md:px-6 py-2.5 text-sm font-medium rounded-full transition-colors ${activeRound === 'r3' ? 'bg-[#1D4ED8] text-white shadow-sm' : 'text-[#4F46E5] hover:text-[#3730A3]'}`}>Round 3</button>
+          <button style={{whiteSpace: "nowrap"}} onClick={() => { setActiveRound('mopUp'); setCurrentPage(1); }} className={`px-4 md:px-6 py-2.5 text-sm font-medium rounded-full transition-colors ${activeRound === 'mopUp' ? 'bg-[#1D4ED8] text-white shadow-sm' : 'text-[#4F46E5] hover:text-[#3730A3]'}`}>Mop-up</button>
         </div>
       </div>
 
       {/* Summary Metric Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
         <div className="bg-[#F8FAFC] p-6 rounded-2xl border border-[#E2E8F0] shadow-sm flex flex-col justify-center relative overflow-hidden">
           <div className="text-xs font-bold text-slate-500 mb-3 flex items-center gap-2">
             <TrendingDown className="w-4 h-4" /> Average Cutoff Drop
@@ -249,8 +258,8 @@ export default function RoundwiseAnalysis() {
         </div>
 
         {/* Data Table */}
-        <div className="md:col-span-8 lg:col-span-9">
-          <div className="bg-white rounded-[20px] shadow-sm flex flex-col h-full overflow-hidden">
+        <div className="md:col-span-8 lg:col-span-9 min-w-0">
+          <div className="bg-white rounded-[20px] shadow-sm flex flex-col h-full overflow-hidden min-w-0 w-full">
             
             <div className="p-6 border-b border-[#F1F5F9] flex justify-between items-center bg-[#F8FAFC]">
               <h2 className="text-lg font-semibold text-[#0F172A]">College Cutoff Analysis</h2>
@@ -261,7 +270,7 @@ export default function RoundwiseAnalysis() {
             </div>
             
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full text-left border-collapse min-w-[800px]">
                 <thead>
                   <tr className="border-b border-[#F1F5F9] text-xs font-semibold text-slate-500 bg-white">
                     <th className="p-5 w-[35%] font-medium">College Name</th>

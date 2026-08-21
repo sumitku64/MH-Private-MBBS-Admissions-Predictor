@@ -86,26 +86,32 @@ export default function DropYearEngine() {
   
   const isProfileReady = score !== '' && budget !== '';
   const [submitted,  setSubmitted]  = useState(isProfileReady);
-  const [synced, setSynced] = useState(false);
+  
+  // Identity-aware profile sync
+  const [hydratedUserId, setHydratedUserId] = useState(() => profile?.isRegistered ? profile.phone : null);
 
   useEffect(() => {
-    if (profile?.isRegistered && !synced) {
-      const s = profile.userScore ?? '';
-      const c = profile.category ?? 'open';
-      const a = getAttempt(profile.education?.class12Year);
-      const b = profile.annualBudget ? Math.round(profile.annualBudget / 100000) : '';
-      
-      setScore(s);
-      setCategory(c);
-      setAttempt(a);
-      setBudget(b);
-      
-      if (s !== '' && b !== '') {
-        setSubmitted(true);
+    const currentAuth = profile?.isRegistered ? profile.phone : null;
+    
+    if (currentAuth !== hydratedUserId) {
+      if (currentAuth) {
+        const s = profile.userScore ?? '';
+        const b = profile.annualBudget ? Math.round(profile.annualBudget / 100000) : '';
+        setScore(s);
+        setCategory(profile.category ?? 'open');
+        setAttempt(getAttempt(profile.education?.class12Year));
+        setBudget(b);
+        if (s !== '' && b !== '') setSubmitted(true);
+      } else {
+        setScore('');
+        setCategory('open');
+        setAttempt('1st');
+        setBudget('');
+        setSubmitted(false);
       }
-      setSynced(true);
+      setHydratedUserId(currentAuth);
     }
-  }, [profile, synced]);
+  }, [profile?.isRegistered, profile?.phone, profile?.userScore, profile?.category, profile?.education, profile?.annualBudget, hydratedUserId]);
 
   const ready = score !== '' && !isNaN(parseInt(score)) && parseInt(score) >= 200 && parseInt(score) <= 720 && budget !== '';
 

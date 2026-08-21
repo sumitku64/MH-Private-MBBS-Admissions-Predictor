@@ -125,7 +125,7 @@ export default function Profile() {
   ];
 
   return (
-    <div className="max-w-4xl mx-auto pb-20">
+    <div className="max-w-4xl mx-auto px-4 md:px-6 py-8 pb-20 w-full">
       <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Personal Profile</h1>
@@ -139,7 +139,7 @@ export default function Profile() {
           <button 
             onClick={handleSave}
             disabled={isSaving}
-            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-sm py-2 px-6 rounded-lg transition-colors shadow-sm whitespace-nowrap"
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-sm py-2 px-4 md:px-6 rounded-lg transition-colors shadow-sm whitespace-nowrap"
           >
             {isSaving ? 'Saving...' : 'Save Changes'}
           </button>
@@ -152,7 +152,7 @@ export default function Profile() {
           <button 
             key={tab.id}
             onClick={() => scrollToSection(tab.id)}
-            className={`py-3 px-6 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            className={`py-3 px-4 md:px-6 text-sm font-bold border-b-2 whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
           >
             {tab.label}
           </button>
@@ -164,7 +164,7 @@ export default function Profile() {
         {/* Basic Information */}
         <section id="basic" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 animate-in fade-in slide-in-from-bottom-4 duration-300 scroll-mt-24">
           <h2 className="text-xl font-black text-slate-900 mb-6">Basic Information</h2>
-          <div className="grid md:grid-cols-2 gap-6 mb-8">
+          <div className="grid md:grid-cols-1 sm:grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 mb-8">
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Full Name</label>
               <div className="relative">
@@ -270,7 +270,7 @@ export default function Profile() {
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Board Name</label>
                   <input type="text" value={formData.education.class12Board} onChange={e => setFormData({...formData, education: {...formData.education, class12Board: e.target.value}})} className="w-full px-4 py-3 bg-[#F4F7FD] border border-transparent rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:bg-white" placeholder="e.g. CBSE" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Year</label>
                     <input type="text" value={formData.education.class12Year} onChange={e => setFormData({...formData, education: {...formData.education, class12Year: e.target.value}})} className="w-full px-4 py-3 bg-[#F4F7FD] border border-transparent rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:bg-white" placeholder="2023" />
@@ -280,7 +280,7 @@ export default function Profile() {
                     <input type="text" value={formData.education.class12Percentage} onChange={e => setFormData({...formData, education: {...formData.education, class12Percentage: e.target.value}})} className="w-full px-4 py-3 bg-[#F4F7FD] border border-transparent rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:bg-white" placeholder="95%" />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Physics</label>
                     <input type="text" value={formData.education.class12Physics} onChange={e => setFormData({...formData, education: {...formData.education, class12Physics: e.target.value}})} className="w-full px-4 py-3 bg-[#F4F7FD] border border-transparent rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:bg-white" placeholder="Marks" />
@@ -309,7 +309,7 @@ export default function Profile() {
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Board Name</label>
                   <input type="text" value={formData.education.class10Board} onChange={e => setFormData({...formData, education: {...formData.education, class10Board: e.target.value}})} className="w-full px-4 py-3 bg-[#F4F7FD] border border-transparent rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:bg-white" placeholder="e.g. ICSE" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Year</label>
                     <input type="text" value={formData.education.class10Year} onChange={e => setFormData({...formData, education: {...formData.education, class10Year: e.target.value}})} className="w-full px-4 py-3 bg-[#F4F7FD] border border-transparent rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:bg-white" placeholder="2021" />
@@ -362,7 +362,7 @@ export default function Profile() {
                 <button 
                   key={sub}
                   onClick={() => toggleArrayItem('reservationSubcategory', sub)}
-                  className={`flex items-center gap-2 px-6 py-3 rounded-xl border text-sm font-bold transition-all ${
+                  className={`flex items-center gap-2 px-4 md:px-6 py-3 rounded-xl border text-sm font-bold transition-all ${
                     formData.reservationSubcategory.includes(sub) ? 'bg-blue-50 border-blue-600 text-blue-700' : 'bg-[#F4F7FD] border-transparent text-slate-600 hover:bg-slate-200'
                   }`}
                 >

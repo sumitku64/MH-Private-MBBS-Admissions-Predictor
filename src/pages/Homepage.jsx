@@ -40,7 +40,7 @@ function CollegeCard({ college, viewMode }) {
   if (viewMode === 'list') {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-center gap-6 hover:shadow-md transition-shadow">
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 w-full">
           <div className="flex items-center gap-3 mb-1">
             <h3 className="font-bold text-slate-900 text-base leading-snug truncate">{college.name}</h3>
             <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full border ${cfg.bg} ${cfg.color} ${cfg.border}`}>{cfg.label}</span>
@@ -114,26 +114,38 @@ export default function Homepage() {
   const [viewMode, setViewMode] = useState('grid');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Predictor state — auto-synced from profile once, then user-editable
+  // Predictor state — auto-synced from profile on auth changes, then user-editable (What-If)
   const [score, setScore] = useState(() => profile?.userScore ? Number(profile.userScore) : 650);
   const [category, setCategory] = useState(() => profile?.category ?? 'open');
   const [gender, setGender] = useState(() => profile?.gender ?? 'any');
   const [year, setYear] = useState(2024);
   const [budget, setBudget] = useState(() => profile?.annualBudget ? Number(profile.annualBudget) : 2500000);
   const [visibleCount, setVisibleCount] = useState(6);
-  const [synced, setSynced] = useState(false);
   const resultsRef = useRef(null);
 
-  // One-time profile sync
+  // Identity-aware profile sync (handles logout and account switching without overwriting active What-Ifs)
+  const [hydratedUserId, setHydratedUserId] = useState(() => profile?.isRegistered ? profile.phone : null);
+
   useEffect(() => {
-    if (profile?.isRegistered && !synced) {
-      if (profile.userScore) setScore(Number(profile.userScore));
-      if (profile.category) setCategory(profile.category);
-      if (profile.gender) setGender(profile.gender);
-      if (profile.annualBudget) setBudget(Number(profile.annualBudget));
-      setSynced(true);
+    const currentAuth = profile?.isRegistered ? profile.phone : null;
+    
+    if (currentAuth !== hydratedUserId) {
+      if (currentAuth) {
+        // Logged in or Account Switched: Hydrate with the active user's data
+        setScore(profile.userScore ? Number(profile.userScore) : 650);
+        setCategory(profile.category ?? 'open');
+        setGender(profile.gender ?? 'any');
+        setBudget(profile.annualBudget ? Number(profile.annualBudget) : 2500000);
+      } else {
+        // Logged out: Reset to anonymous defaults (No stale data leak)
+        setScore(650);
+        setCategory('open');
+        setGender('any');
+        setBudget(2500000);
+      }
+      setHydratedUserId(currentAuth);
     }
-  }, [profile, synced]);
+  }, [profile?.isRegistered, profile?.phone, profile?.userScore, profile?.category, profile?.gender, profile?.annualBudget, hydratedUserId]);
 
   const { collegeData: colleges } = useCollegeData();
 
@@ -192,7 +204,7 @@ export default function Homepage() {
     <div className="w-full bg-white">
 
       {/* HERO SECTION */}
-      <section className="max-w-7xl mx-auto px-4 md:px-6 py-10 md:py-16 grid md:grid-cols-12 gap-8 md:gap-12 items-start">
+      <section className="max-w-7xl mx-auto px-4 md:px-4 md:px-6 py-10 md:py-16 grid md:grid-cols-12 gap-8 md:gap-12 items-start">
 
         {/* Left */}
         <div className="md:col-span-7 pt-4">
@@ -341,7 +353,7 @@ export default function Homepage() {
       </section>
 
       {/* RECOMMENDED COLLEGES */}
-      <section ref={resultsRef} className="max-w-7xl mx-auto px-4 md:px-6 mt-8 md:mt-16 pb-16">
+      <section ref={resultsRef} className="max-w-7xl mx-auto px-4 md:px-4 md:px-6 mt-8 md:mt-16 pb-16">
         <div className="flex flex-col md:flex-row md:items-end justify-between mb-6 gap-4">
           <div>
             <h2 className="text-2xl font-black text-slate-900 mb-1">Recommended Colleges</h2>
@@ -350,8 +362,8 @@ export default function Homepage() {
         </div>
 
         {/* Controls Bar */}
-        <div className="flex flex-wrap gap-3 mb-8 items-center">
-          <div className="relative flex-1 min-w-[180px] max-w-xs">
+        <div className="flex flex-col sm:flex-row flex-wrap gap-3 mb-8 items-stretch sm:items-center">
+          <div className="relative flex-1 min-w-[180px] max-w-full sm:max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
@@ -419,7 +431,7 @@ export default function Homepage() {
 
       {/* DATA FOUNDATION */}
       <section className="bg-slate-50 py-16 md:py-20 border-t border-slate-100">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 grid md:grid-cols-2 gap-10 md:gap-16 items-center">
+        <div className="max-w-7xl mx-auto px-4 md:px-4 md:px-6 grid md:grid-cols-2 gap-10 md:gap-16 items-center">
           <div className="rounded-2xl overflow-hidden shadow-lg border border-slate-200/50">
             <img
               src="https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&q=80&w=1000"
@@ -450,7 +462,7 @@ export default function Homepage() {
       </section>
 
       {/* FAQs */}
-      <section className="max-w-4xl mx-auto px-4 md:px-6 py-16 md:py-20">
+      <section className="max-w-4xl mx-auto px-4 md:px-4 md:px-6 py-16 md:py-20">
         <div className="text-center mb-10">
           <h2 className="text-2xl md:text-3xl font-black text-slate-900 mb-2">Frequently Asked Questions</h2>
           <p className="text-sm text-slate-500">Everything you need to know about MH MBBS admissions</p>
@@ -459,14 +471,14 @@ export default function Homepage() {
           {FAQS.map((faq, i) => (
             <div key={i} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
               <button
-                className="w-full flex justify-between items-center px-6 py-4 text-left hover:bg-slate-50 transition-colors"
+                className="w-full flex justify-between items-center px-4 md:px-6 py-4 text-left hover:bg-slate-50 transition-colors"
                 onClick={() => setActiveFaq(activeFaq === i ? null : i)}
               >
                 <span className="font-bold text-slate-900 text-sm pr-4">{faq.q}</span>
                 {activeFaq === i ? <ChevronUp className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" />}
               </button>
               {activeFaq === i && (
-                <div className="px-6 pb-5">
+                <div className="px-4 md:px-6 pb-5">
                   <p className="text-sm text-slate-500 leading-relaxed">{faq.a}</p>
                 </div>
               )}
@@ -477,12 +489,12 @@ export default function Homepage() {
 
       {/* SUCCESS STORIES */}
       <section className="bg-slate-50 border-t border-slate-100 py-16 md:py-20">
-        <div className="max-w-7xl mx-auto px-4 md:px-6">
+        <div className="max-w-7xl mx-auto px-4 md:px-4 md:px-6">
           <div className="text-center mb-10">
             <h2 className="text-2xl md:text-3xl font-black text-slate-900 mb-2">Success Stories</h2>
             <p className="text-sm text-slate-500">From students who used Eduniaa to navigate MH MBBS admissions</p>
           </div>
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-1 md:grid-cols-3 gap-6">
             {SUCCESS_STORIES.map((s, i) => (
               <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="text-3xl font-black text-indigo-200 mb-3 leading-none">"</div>

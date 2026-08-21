@@ -31,12 +31,13 @@ function AppRoutes() {
         <Route path="/" element={<Homepage />} />
         <Route path="/college/:id" element={<CollegeDetail />} />
         <Route path="/roi" element={<FinancialPlanner />} />
+        <Route path="/aiq-cutoffs" element={<RoundwiseAnalysis />} />
         {/* Keeping old tools accessible temporarily */}
         <Route path="/legacy/predictor" element={<NeetPredictor />} />
       </Route>
 
       {/* Dashboard Routes with Sidebar */}
-      <Route element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
+      <Route element={<ProtectedRoute><PublicLayout /></ProtectedRoute>}>
         <Route path="/profile" element={<Profile />} />
         <Route path="/analysis" element={<RoundwiseAnalysis />} />
         <Route path="/ranking" element={<CollegeRanking />} />
@@ -61,4 +62,3 @@ export default function App() {
     </UserProvider>
   );
 }
-

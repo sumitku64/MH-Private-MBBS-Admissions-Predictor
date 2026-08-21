@@ -44,14 +44,22 @@ export default function FinancialPlanner() {
   const [isEditingCompetitors, setIsEditingCompetitors] = useState(false);
   const [alt1, setAlt1] = useState('');
   const [alt2, setAlt2] = useState('');
-  const [synced, setSynced] = useState(false);
+  
+  // Identity-aware profile sync
+  const [hydratedUserId, setHydratedUserId] = useState(() => profile?.isRegistered ? profile.phone : null);
 
   useEffect(() => {
-    if (profile?.isRegistered && !synced) {
-      if (profile.category) setCategory(profile.category);
-      setSynced(true);
+    const currentAuth = profile?.isRegistered ? profile.phone : null;
+    
+    if (currentAuth !== hydratedUserId) {
+      if (currentAuth) {
+        setCategory(profile.category || 'open');
+      } else {
+        setCategory('open');
+      }
+      setHydratedUserId(currentAuth);
     }
-  }, [profile, synced]);
+  }, [profile?.isRegistered, profile?.phone, profile?.category, hydratedUserId]);
 
   useEffect(() => {
     if (collegeData && collegeData.length > 0 && !selectedCollegeId) {
@@ -144,17 +152,17 @@ export default function FinancialPlanner() {
   return (
     <div className="w-full min-h-screen bg-[#F4F7FD] pb-20 font-sans">
          {!calculations ? (
-        <div className="max-w-6xl mx-auto px-6 py-20 flex flex-col items-center justify-center text-slate-400">
+        <div className="max-w-6xl mx-auto px-4 md:px-6 py-20 flex flex-col items-center justify-center text-slate-400">
           <Calculator className="w-16 h-16 mb-4 text-slate-300" />
           <p className="font-medium">Select a college to view the Financial Planner</p>
         </div>
       ) : (
         <>
           {/* Hero Section */}
-          <div className="relative w-full h-[280px] bg-slate-50 overflow-hidden border-b border-slate-200">
+          <div className="relative w-full min-h-[280px] md:h-[280px] py-10 md:py-0 bg-slate-50 overflow-hidden border-b border-slate-200">
             <div className="absolute inset-0 bg-cover bg-center opacity-10 mix-blend-multiply" style={{backgroundImage: 'url("https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&q=80&w=2000")'}}></div>
             <div className="absolute inset-0 bg-gradient-to-t from-white via-white/80 to-transparent"></div>
-            <div className="relative max-w-6xl mx-auto px-6 h-full flex flex-col justify-end pb-8">
+            <div className="relative max-w-6xl mx-auto px-4 md:px-6 h-full flex flex-col justify-end pb-8">
                <div className="flex items-center gap-2 mb-3">
                   <span className="px-2.5 py-1 bg-blue-100 text-blue-800 text-[10px] font-black tracking-wider uppercase rounded">PRIVATE</span>
                   <span className="text-slate-500 text-xs font-bold flex items-center gap-1"><MapPin className="w-3.5 h-3.5"/> {college.city || 'Mumbai'}, Maharashtra</span>
@@ -171,18 +179,18 @@ export default function FinancialPlanner() {
 
           {/* Controls & Tabs */}
           <div className="bg-white shadow-sm mb-8 relative z-10">
-            <div className="max-w-6xl mx-auto px-6">
+            <div className="max-w-6xl mx-auto px-4 md:px-6">
               
               {/* College Selector / Search */}
-              <div className="flex flex-col md:flex-row justify-between items-center py-4 border-b border-slate-100 gap-4">
-                <div className="flex items-center gap-3 w-full md:w-auto">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center py-4 border-b border-slate-100 gap-4">
+                <div className="flex items-center gap-3 w-full md:w-auto flex flex-col sm:flex-row">
                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Analyze Another College:</span>
-                   <select value={selectedCollegeId} onChange={e => setSelectedCollegeId(e.target.value)} className="flex-1 md:w-80 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors">
+                   <select value={selectedCollegeId} onChange={e => setSelectedCollegeId(e.target.value)} className="w-full md:w-80 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors">
                      <option value="">-- Select a College --</option>
                      {collegeData?.map(c => <option key={c.code} value={c.code}>{c.name}</option>)}
                    </select>
                 </div>
-                <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="flex items-center gap-3 w-full md:w-auto flex flex-col sm:flex-row">
                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Category Quota:</span>
                    <select value={category} onChange={e => setCategory(e.target.value)} className="w-full md:w-48 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors">
                      {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
@@ -191,7 +199,7 @@ export default function FinancialPlanner() {
               </div>
 
               {/* Tabs */}
-              <div className="flex gap-8 overflow-x-auto">
+              <div className="flex gap-4 md:gap-8 overflow-x-auto whitespace-nowrap hide-scrollbar pb-1">
                  <button onClick={() => setActiveTab('roi')} className={`py-4 font-bold text-sm border-b-2 transition-colors whitespace-nowrap ${activeTab === 'roi' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>ROI Calculator</button>
                  <button onClick={() => setActiveTab('allocation')} className={`py-4 font-bold text-sm border-b-2 transition-colors whitespace-nowrap ${activeTab === 'allocation' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Allocation Simulator</button>
                  <button onClick={() => setActiveTab('dropyear')} className={`py-4 font-bold text-sm border-b-2 transition-colors whitespace-nowrap ${activeTab === 'dropyear' ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Strategic Analysis</button>
@@ -200,7 +208,7 @@ export default function FinancialPlanner() {
           </div>
 
           {activeTab === 'roi' && (
-            <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div className="max-w-6xl mx-auto px-4 md:px-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
             
             {/* Left Sidebar - Financial Overview */}
             <div className="lg:col-span-3 space-y-6">
@@ -238,10 +246,10 @@ export default function FinancialPlanner() {
             </div>
 
             {/* Right Main Content */}
-            <div className="lg:col-span-9 space-y-8">
+            <div className="lg:col-span-9 space-y-8 min-w-0">
               
               {/* Break-Even Analysis */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-8 min-w-0">
                 <div className="flex flex-col md:flex-row md:justify-between md:items-start mb-8 gap-4">
                   <div>
                     <h2 className="text-xl font-black text-slate-900 mb-1">Break-Even Analysis</h2>
@@ -346,7 +354,7 @@ export default function FinancialPlanner() {
                   </div>
                 )}
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left min-w-[700px]">
+                  <table className="w-full text-left min-w-[600px] sm:min-w-[700px]">
                     <thead>
                       <tr>
                         <th className="p-5 font-bold text-slate-400 text-[10px] uppercase tracking-wider w-[25%] border-b border-slate-100 bg-[#F8FAFC]">Metric</th>
@@ -464,13 +472,13 @@ export default function FinancialPlanner() {
           )}
 
           {activeTab === 'allocation' && (
-            <div className="max-w-6xl mx-auto px-6 py-8">
+            <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
               <AllocationTab college={college} />
             </div>
           )}
 
           {activeTab === 'dropyear' && (
-            <div className="max-w-6xl mx-auto px-6 py-8">
+            <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[600px]">
                 <DropYearEngine />
               </div>
