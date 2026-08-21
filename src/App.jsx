@@ -32,15 +32,15 @@ function AppRoutes() {
         <Route path="/college/:id" element={<CollegeDetail />} />
         <Route path="/roi" element={<FinancialPlanner />} />
         <Route path="/aiq-cutoffs" element={<RoundwiseAnalysis />} />
+        <Route path="/ranking" element={<CollegeRanking />} />
         {/* Keeping old tools accessible temporarily */}
         <Route path="/legacy/predictor" element={<NeetPredictor />} />
       </Route>
 
-      {/* Dashboard Routes with Sidebar */}
+      {/* Protected Routes (Requires Login) */}
       <Route element={<ProtectedRoute><PublicLayout /></ProtectedRoute>}>
         <Route path="/profile" element={<Profile />} />
         <Route path="/analysis" element={<RoundwiseAnalysis />} />
-        <Route path="/ranking" element={<CollegeRanking />} />
       </Route>
 
       {/* Admin Route (No specific layout for now) */}
