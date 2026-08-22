@@ -84,7 +84,7 @@ export default function NavigationDrawer({ isOpen, onClose, forceMobileOnly = fa
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-bold text-slate-900 truncate">{profile.userName || 'Guest User'}</div>
-                  <div className="text-xs text-slate-500 truncate">Candidate ID: {profile.userId || '4920'}</div>
+                  <div className="text-xs text-slate-500 truncate">{profile.google_email}</div>
                 </div>
              </div>
           ) : (

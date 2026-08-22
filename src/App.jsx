@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { UserProvider, useUser } from './context/UserContext';
 import PublicLayout from './layouts/PublicLayout';
 import DashboardLayout from './layouts/DashboardLayout';
+import OnboardingModal from './components/OnboardingModal';
 
 // Pages
 import Homepage from './pages/Homepage';
@@ -52,12 +53,24 @@ function AppRoutes() {
   );
 }
 
+function AppContent() {
+  const { profile } = useUser();
+  const needsOnboarding = profile.isRegistered && profile.userScore === null;
+
+  return (
+    <>
+      <AppRoutes />
+      <AICounsellor />
+      {needsOnboarding && <OnboardingModal />}
+    </>
+  );
+}
+
 export default function App() {
   return (
     <UserProvider>
       <BrowserRouter>
-        <AppRoutes />
-        <AICounsellor />
+        <AppContent />
       </BrowserRouter>
     </UserProvider>
   );

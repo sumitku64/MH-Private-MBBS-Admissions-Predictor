@@ -15,6 +15,7 @@ export default function PublicLayout() {
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
       
       <NavigationDrawer isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} forceMobileOnly={true} />
+
       
       <header className="h-16 shrink-0 bg-white border-b border-slate-200 flex items-center justify-between px-6 z-10 sticky top-0">
         <div className="flex items-center gap-4 flex-1">
@@ -58,9 +59,12 @@ export default function PublicLayout() {
           {!profile?.isRegistered && (
             <button 
               onClick={() => setShowAuth(true)}
-              className="md:hidden flex items-center justify-center w-10 h-10 bg-blue-50 text-blue-600 rounded-full font-bold text-xs"
+              className="md:hidden w-11 h-11 flex items-center justify-center text-slate-500 hover:text-blue-600 bg-slate-50 hover:bg-blue-50 rounded-full transition-colors -mr-2"
+              aria-label="Login"
             >
-              IN
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="w-5 h-5" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
             </button>
           )}
         </div>

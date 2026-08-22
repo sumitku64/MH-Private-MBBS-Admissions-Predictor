@@ -48,8 +48,8 @@ export default function ProfileMenu() {
         <div className="absolute right-0 mt-3 w-56 bg-white rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] border border-slate-200 z-[100] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
             <p className="text-sm font-bold text-slate-900 truncate">{profile.userName}</p>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mt-1">
-              ID: {profile.userId || '4920'}
+            <p className="text-[10px] font-medium text-slate-500 mt-1 truncate">
+              {profile.google_email}
             </p>
           </div>
           

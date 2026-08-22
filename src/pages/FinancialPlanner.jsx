@@ -46,10 +46,10 @@ export default function FinancialPlanner() {
   const [alt2, setAlt2] = useState('');
   
   // Identity-aware profile sync
-  const [hydratedUserId, setHydratedUserId] = useState(() => profile?.isRegistered ? profile.phone : null);
+  const [hydratedUserId, setHydratedUserId] = useState(() => profile?.isRegistered ? profile.google_id : null);
 
   useEffect(() => {
-    const currentAuth = profile?.isRegistered ? profile.phone : null;
+    const currentAuth = profile?.isRegistered ? profile.google_id : null;
     
     if (currentAuth !== hydratedUserId) {
       if (currentAuth) {
@@ -59,7 +59,7 @@ export default function FinancialPlanner() {
       }
       setHydratedUserId(currentAuth);
     }
-  }, [profile?.isRegistered, profile?.phone, profile?.category, hydratedUserId]);
+  }, [profile?.isRegistered, profile?.google_id, profile?.category, hydratedUserId]);
 
   useEffect(() => {
     if (collegeData && collegeData.length > 0 && !selectedCollegeId) {

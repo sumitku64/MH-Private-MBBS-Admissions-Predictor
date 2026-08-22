@@ -88,10 +88,10 @@ export default function DropYearEngine() {
   const [submitted,  setSubmitted]  = useState(isProfileReady);
   
   // Identity-aware profile sync
-  const [hydratedUserId, setHydratedUserId] = useState(() => profile?.isRegistered ? profile.phone : null);
+  const [hydratedUserId, setHydratedUserId] = useState(() => profile?.isRegistered ? profile.google_id : null);
 
   useEffect(() => {
-    const currentAuth = profile?.isRegistered ? profile.phone : null;
+    const currentAuth = profile?.isRegistered ? profile.google_id : null;
     
     if (currentAuth !== hydratedUserId) {
       if (currentAuth) {
@@ -111,7 +111,7 @@ export default function DropYearEngine() {
       }
       setHydratedUserId(currentAuth);
     }
-  }, [profile?.isRegistered, profile?.phone, profile?.userScore, profile?.category, profile?.education, profile?.annualBudget, hydratedUserId]);
+  }, [profile?.isRegistered, profile?.google_id, profile?.userScore, profile?.category, profile?.education, profile?.annualBudget, hydratedUserId]);
 
   const ready = score !== '' && !isNaN(parseInt(score)) && parseInt(score) >= 200 && parseInt(score) <= 720 && budget !== '';
 

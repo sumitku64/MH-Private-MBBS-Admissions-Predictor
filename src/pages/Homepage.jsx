@@ -124,10 +124,10 @@ export default function Homepage() {
   const resultsRef = useRef(null);
 
   // Identity-aware profile sync (handles logout and account switching without overwriting active What-Ifs)
-  const [hydratedUserId, setHydratedUserId] = useState(() => profile?.isRegistered ? profile.phone : null);
+  const [hydratedUserId, setHydratedUserId] = useState(() => profile?.isRegistered ? profile.google_id : null);
 
   useEffect(() => {
-    const currentAuth = profile?.isRegistered ? profile.phone : null;
+    const currentAuth = profile?.isRegistered ? profile.google_id : null;
     
     if (currentAuth !== hydratedUserId) {
       if (currentAuth) {
@@ -145,7 +145,7 @@ export default function Homepage() {
       }
       setHydratedUserId(currentAuth);
     }
-  }, [profile?.isRegistered, profile?.phone, profile?.userScore, profile?.category, profile?.gender, profile?.annualBudget, hydratedUserId]);
+  }, [profile?.isRegistered, profile?.google_id, profile?.userScore, profile?.category, profile?.gender, profile?.annualBudget, hydratedUserId]);
 
   const { collegeData: colleges } = useCollegeData();
 

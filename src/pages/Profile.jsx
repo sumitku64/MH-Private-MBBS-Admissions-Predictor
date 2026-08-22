@@ -1,7 +1,7 @@
 import { useUser } from '../context/UserContext';
 import { Check } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { INDIAN_STATES, QUALIFICATIONS } from '../components/AuthModal';
+import { INDIAN_STATES, QUALIFICATIONS } from '../data/constants';
 import { CATEGORIES } from '../data';
 
 export default function Profile() {
@@ -198,10 +198,10 @@ export default function Profile() {
               </div>
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Phone Number</label>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Google Account</label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">📱</span>
-                <input type="text" readOnly value={profile.phone || ''} className="w-full pl-9 pr-4 py-3 bg-slate-100 border border-transparent rounded-lg text-sm text-slate-500 cursor-not-allowed focus:outline-none" title="Phone number cannot be changed" />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">📧</span>
+                <input type="text" readOnly value={profile.google_email || ''} className="w-full pl-9 pr-4 py-3 bg-slate-100 border border-transparent rounded-lg text-sm text-slate-500 cursor-not-allowed focus:outline-none" title="Google account email cannot be changed" />
               </div>
             </div>
             <div>

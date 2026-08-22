@@ -147,7 +147,7 @@ export default function AICounsellor() {
         time: 'Saved',
       })),
     ]);
-  }, [profile.phone]);
+  }, [profile.google_id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });

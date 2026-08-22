@@ -17,10 +17,10 @@ export default function RoundwiseAnalysis() {
   const rowsPerPage = 10;
 
   // Identity-aware profile sync
-  const [hydratedUserId, setHydratedUserId] = useState(() => profile?.isRegistered ? profile.phone : null);
+  const [hydratedUserId, setHydratedUserId] = useState(() => profile?.isRegistered ? profile.google_id : null);
 
   useEffect(() => {
-    const currentAuth = profile?.isRegistered ? profile.phone : null;
+    const currentAuth = profile?.isRegistered ? profile.google_id : null;
     
     if (currentAuth !== hydratedUserId) {
       if (currentAuth) {
@@ -32,7 +32,7 @@ export default function RoundwiseAnalysis() {
       }
       setHydratedUserId(currentAuth);
     }
-  }, [profile?.isRegistered, profile?.phone, profile?.userScore, profile?.category, hydratedUserId]);
+  }, [profile?.isRegistered, profile?.google_id, profile?.userScore, profile?.category, hydratedUserId]);
   
   // Calculate dynamic metrics across all colleges
   const analysisData = useMemo(() => {

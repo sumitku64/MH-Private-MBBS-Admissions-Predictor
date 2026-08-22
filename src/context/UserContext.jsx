@@ -57,75 +57,28 @@ export function UserProvider({ children }) {
     }
   }, [profile, shortlist, chatHistory]);
 
-  // ── Register (new user) ────────────────────────────────────────────────────
-  async function register({ name, phone, userScore, category, gender, budget, domicileState, education }) {
+  // ── Login with Google ───────────────────────────────────────────────────────
+  async function loginWithGoogle(credential) {
     setAuthLoading(true);
     setAuthError('');
     try {
-      const res = await fetch(`${API_BASE}/api/auth/register`, {
+      const res = await fetch(`${API_BASE}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name, phone, neet_score: userScore ?? null, category: category ?? 'open', gender: gender ?? 'any',
-          annualBudget: budget, domicileState, education
-        }),
+        body: JSON.stringify({ token: credential }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setAuthError(data.error ?? 'Registration failed.');
+        setAuthError(data.error ?? 'Google Login failed.');
         setAuthLoading(false);
         return { ok: false, error: data.error };
       }
+      
       const p = {
-        userName: data.student.name,
-        phone:    data.student.phone,
-        pin:      data.pin,
-        userScore: data.student.neet_score,
-        category:  data.student.category ?? 'open',
-        gender:    data.student.gender   ?? 'any',
-        annualBudget: data.student.annual_budget ?? 1500000,
-        domicileState: data.student.domicile_state ?? 'MH',
-        education: data.student.educational_details ?? { class10State: 'MH', class12State: 'MH', class12Year: '2024', qualification: '12th Science' },
-        dob:          data.student.dob ?? '',
-        allIndiaRank: data.student.allIndiaRank ?? '',
-        categoryRank: data.student.categoryRank ?? '',
-        preferredRegions: data.student.preferredRegions ?? [],
-        needsHostel:  data.student.needsHostel ?? false,
-        isRegistered: true,
-      };
-      setProfile(p);
-      setShortlist([]);
-      setChatHistory([]);
-      saveStored({ ...p, shortlist: [], chatHistory: [] });
-      setAuthLoading(false);
-      return { ok: true, pin: data.pin };
-    } catch (e) {
-      setAuthError('Network error. Try again.');
-      setAuthLoading(false);
-      return { ok: false, error: 'Network error.' };
-    }
-  }
-
-  // ── Login (returning user) ─────────────────────────────────────────────────
-  async function login({ phone, pin }) {
-    setAuthLoading(true);
-    setAuthError('');
-    try {
-      const res = await fetch(`${API_BASE}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, pin }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setAuthError(data.error ?? 'Login failed.');
-        setAuthLoading(false);
-        return { ok: false, error: data.error };
-      }
-      const p = {
-        userName:     data.student.name,
-        phone:        data.student.phone,
-        pin:          String(pin),
+        google_id:    data.student.google_id,
+        google_email: data.student.google_email,
+        google_name:  data.student.google_name,
+        userName:     data.student.name || data.student.google_name,
         userScore:    data.student.neet_score,
         category:     data.student.category ?? 'open',
         gender:       data.student.gender   ?? 'any',
@@ -139,10 +92,13 @@ export function UserProvider({ children }) {
         needsHostel:  data.student.needsHostel ?? false,
         fatherName:   data.student.fatherName ?? '',
         altPhone:     data.student.altPhone ?? '',
+        phone:        data.student.phone ?? '',
         preferredInstituteType: data.student.preferredInstituteType ?? [],
         reservationSubcategory: data.student.reservationSubcategory ?? [],
         isRegistered: true,
+        sessionToken: data.sessionToken, // store secure session token
       };
+      
       setProfile(p);
       setShortlist(data.shortlist ?? []);
       setChatHistory(data.chat ?? []);
@@ -158,7 +114,10 @@ export function UserProvider({ children }) {
 
   // ── Logout ─────────────────────────────────────────────────────────────────
   function logout() {
-    setProfile({ userName: '', phone: '', pin: '', userScore: null, category: 'open', gender: 'any', isRegistered: false });
+    setProfile({ 
+      google_id: '', google_email: '', google_name: '', sessionToken: '',
+      userName: '', phone: '', userScore: null, category: 'open', gender: 'any', isRegistered: false 
+    });
     setShortlist([]);
     setChatHistory([]);
     clearStored();
@@ -167,12 +126,12 @@ export function UserProvider({ children }) {
   // ── Save shortlist to DB ───────────────────────────────────────────────────
   const saveShortlist = useCallback(async (colleges) => {
     setShortlist(colleges);
-    if (!profile.isRegistered || !profile.phone || !profile.pin) return;
+    if (!profile.isRegistered || !profile.sessionToken) return;
     try {
       await fetch(`${API_BASE}/api/student/shortlist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: profile.phone, pin: profile.pin, colleges }),
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${profile.sessionToken}` },
+        body: JSON.stringify({ colleges }),
       });
     } catch {}
   }, [profile]);
@@ -180,12 +139,12 @@ export function UserProvider({ children }) {
   // ── Save chat messages to DB ───────────────────────────────────────────────
   const saveChatMessages = useCallback(async (messages) => {
     setChatHistory(messages);
-    if (!profile.isRegistered || !profile.phone || !profile.pin || messages.length === 0) return;
+    if (!profile.isRegistered || !profile.sessionToken || messages.length === 0) return;
     try {
       await fetch(`${API_BASE}/api/student/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: profile.phone, pin: profile.pin, messages }),
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${profile.sessionToken}` },
+        body: JSON.stringify({ messages }),
       });
     } catch {}
   }, [profile]);
@@ -195,17 +154,13 @@ export function UserProvider({ children }) {
     setProfile(prev => ({ ...prev, ...newProfileData }));
     
     // Attempt to sync to cloud DB if user is registered
-    if (!profile.isRegistered || !profile.phone || !profile.pin) return { ok: true };
+    if (!profile.isRegistered || !profile.sessionToken) return { ok: true };
 
     try {
       const res = await fetch(`${API_BASE}/api/student/update`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          phone: profile.phone, 
-          pin: profile.pin, 
-          profile: newProfileData 
-        }),
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${profile.sessionToken}` },
+        body: JSON.stringify({ profile: newProfileData }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -223,7 +178,7 @@ export function UserProvider({ children }) {
     <UserContext.Provider value={{
       profile, shortlist, chatHistory,
       authLoading, authError, setAuthError,
-      register, login, logout,
+      loginWithGoogle, logout,
       saveShortlist, saveChatMessages, updateProfile
     }}>
       {children}
